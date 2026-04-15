@@ -12,7 +12,7 @@ dotenv.config();
 
 const app = express();
 const PORT = 3000;
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 150 * 1024 * 1024 } });
 
 const TIKTOK_REDIRECT_URI = process.env.TIKTOK_REDIRECT_URI ||
   'https://teleprompter.producinghollywood.com/auth/tiktok/callback';
@@ -76,6 +76,55 @@ function clearSession(res: express.Response) {
 
 import cookieParser from 'cookie-parser';
 app.use(cookieParser());
+
+// ─── Token Refresh Helper ────────────────────────────────────────────────────
+
+async function refreshTikTokToken(
+  req: express.Request,
+  res: express.Response
+): Promise<string | null> {
+  const session = getSession(req);
+  const refresh_token = session.tiktokRefreshToken;
+
+  if (!refresh_token) {
+    console.warn('[TikTok] No refresh token in session — user must re-authenticate');
+    return null;
+  }
+
+  try {
+    console.log('[TikTok] Refreshing access token...');
+    const response = await axios.post(
+      'https://open.tiktokapis.com/v2/oauth/token/',
+      new URLSearchParams({
+        client_key: TIKTOK_CLIENT_KEY!,
+        client_secret: TIKTOK_CLIENT_SECRET!,
+        grant_type: 'refresh_token',
+        refresh_token,
+      }),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+    );
+
+    const { access_token, refresh_token: new_refresh_token } = response.data;
+
+    if (!access_token) {
+      console.error('[TikTok] Refresh response missing access_token:', response.data);
+      return null;
+    }
+
+    // Persist new tokens back into the session cookie
+    setSession(res, {
+      ...session,
+      tiktokToken: access_token,
+      tiktokRefreshToken: new_refresh_token || refresh_token,
+    });
+
+    console.log('[TikTok] Token refreshed successfully');
+    return access_token;
+  } catch (err: any) {
+    console.error('[TikTok] Token refresh failed:', err.response?.data || err.message);
+    return null;
+  }
+}
 
 // ─── AI Script Generation ────────────────────────────────────────────────────
 
@@ -206,11 +255,11 @@ app.get('/auth/tiktok/callback', async (req, res) => {
       { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
     );
 
-    console.log('[TikTok Callback] Token response:', JSON.stringify(tokenResponse.data));
-    const { access_token, open_id } = tokenResponse.data;
+    console.log('[TikTok Callback] Token response status:', tokenResponse.status);
+    const { access_token, refresh_token, open_id } = tokenResponse.data;
 
     if (!access_token) {
-      throw new Error('No access_token in response: ' + JSON.stringify(tokenResponse.data));
+      throw new Error('No access_token in response');
     }
 
     const userResponse = await axios.get(
@@ -223,6 +272,7 @@ app.get('/auth/tiktok/callback', async (req, res) => {
 
     setSession(res, {
       tiktokToken: access_token,
+      tiktokRefreshToken: refresh_token || null,
       tiktokUser: {
         display_name: user?.display_name || 'TikTok User',
         avatar_url: user?.avatar_url || '',
@@ -234,7 +284,8 @@ app.get('/auth/tiktok/callback', async (req, res) => {
     res.redirect('/auth/tiktok/success');
 
   } catch (err: any) {
-    const errData = err.response?.data || err.message;
+    // Avoid logging full request params (may contain client_secret)
+    const errData = err.response?.data ? { error: err.response.data.error, description: err.response.data.error_description } : err.message;
     console.error('[TikTok Callback] FAILED:', JSON.stringify(errData));
     res.send(`
       <html><body style="font-family:sans-serif;padding:40px;color:#c00;background:#0a0a0a;text-align:center">
@@ -276,14 +327,17 @@ app.post('/api/auth/logout', (req, res) => {
 
 app.post('/api/tiktok/post', upload.single('video'), async (req, res) => {
   const session = getSession(req);
-  const access_token = session.tiktokToken;
+  let access_token = session.tiktokToken;
   if (!access_token) return res.status(401).json({ error: 'Not authenticated' });
 
   const { caption } = req.body;
   const videoFile = req.file;
   if (!videoFile) return res.status(400).json({ error: 'No video provided' });
 
-  try {
+  // Use actual mime type from the recorded blob, not hardcoded webm
+  const mimeType = videoFile.mimetype || 'video/webm';
+
+  const attemptPost = async (token: string) => {
     const initResponse = await axios.post(
       'https://open.tiktokapis.com/v2/post/publish/video/init/',
       {
@@ -303,7 +357,7 @@ app.post('/api/tiktok/post', upload.single('video'), async (req, res) => {
       },
       {
         headers: {
-          Authorization: `Bearer ${access_token}`,
+          Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       }
@@ -313,14 +367,36 @@ app.post('/api/tiktok/post', upload.single('video'), async (req, res) => {
 
     await axios.put(upload_url, videoFile.buffer, {
       headers: {
-        'Content-Type': 'video/webm',
+        'Content-Type': mimeType,
         'Content-Range': `bytes 0-${videoFile.size - 1}/${videoFile.size}`
       }
     });
 
+    return publish_id;
+  };
+
+  try {
+    const publish_id = await attemptPost(access_token);
     res.json({ success: true, publish_id });
   } catch (error: any) {
-    console.error('TikTok Post Error:', error.response?.data || error.message);
+    const status = error.response?.status;
+    // 401 means token expired — try refresh once
+    if (status === 401) {
+      console.warn('[TikTok Post] 401 — attempting token refresh...');
+      const newToken = await refreshTikTokToken(req, res);
+      if (newToken) {
+        try {
+          const publish_id = await attemptPost(newToken);
+          return res.json({ success: true, publish_id });
+        } catch (retryErr: any) {
+          console.error('[TikTok Post] Retry after refresh failed:', retryErr.response?.data || retryErr.message);
+          return res.status(500).json({ error: 'Post failed after token refresh. Please reconnect TikTok.' });
+        }
+      } else {
+        return res.status(401).json({ error: 'Session expired. Please reconnect your TikTok account.' });
+      }
+    }
+    console.error('[TikTok Post] Error:', error.response?.data || error.message);
     res.status(500).json({ error: 'Failed to post to TikTok' });
   }
 });

@@ -51,7 +51,6 @@ export default function App() {
   const [isLive, setIsLive] = useState(false);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   
-  // Teleprompter Settings
   const [fontSize, setFontSize] = useState(32);
   const [scrollSpeed, setScrollSpeed] = useState(20);
   const [opacity, setOpacity] = useState(40);
@@ -65,6 +64,9 @@ export default function App() {
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
   const [tiktokUser, setTiktokUser] = useState<any>(null);
   const [isPosting, setIsPosting] = useState(false);
+
+  // Derive effective caption: use caption state if set, else first 150 chars of script
+  const effectiveCaption = caption.trim() || script.slice(0, 150);
 
   const fetchTikTokUser = async (): Promise<any | null> => {
     try {
@@ -87,19 +89,13 @@ export default function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const justConnected = params.get('tiktok') === 'connected';
-    
     if (justConnected) {
-      // Clean the URL without reloading
       window.history.replaceState({}, '', '/');
-      // Retry a few times with delay — cookie needs a moment to be 
-      // attached to subsequent requests after the redirect
       let attempts = 0;
       const tryFetch = async () => {
         attempts++;
         const user = await fetchTikTokUser();
-        if (!user && attempts < 5) {
-          setTimeout(tryFetch, 800);
-        }
+        if (!user && attempts < 5) setTimeout(tryFetch, 800);
       };
       setTimeout(tryFetch, 500);
     } else {
@@ -108,9 +104,6 @@ export default function App() {
   }, []);
 
   const handleTikTokConnect = () => {
-    // Same-tab redirect — most reliable OAuth pattern.
-    // Popup approach is blocked by modern browsers when the
-    // auth provider is a cross-site domain.
     window.location.href = '/auth/tiktok';
   };
 
@@ -125,7 +118,8 @@ export default function App() {
     try {
       const formData = new FormData();
       formData.append('video', recordedBlob, 'video.webm');
-      formData.append('caption', caption || script.slice(0, 100));
+      // Always send effectiveCaption so there's always a caption
+      formData.append('caption', effectiveCaption);
 
       const res = await fetch('/api/tiktok/post', {
         method: 'POST',
@@ -154,7 +148,7 @@ export default function App() {
       timestamp: Date.now(),
       topic
     };
-    const newHistory = [newItem, ...history].slice(0, 20); // Keep last 20
+    const newHistory = [newItem, ...history].slice(0, 20);
     setHistory(newHistory);
     safeSetStorage('televibe_history', JSON.stringify(newHistory));
   };
@@ -172,15 +166,16 @@ export default function App() {
       setScript(result.script);
       setCaption(result.caption);
       saveToHistory(result, aiTopic);
-    } catch (error) {
-      console.error("AI Generation failed:", error);
+    } catch (error: any) {
+      console.error('AI Generation failed:', error);
+      alert('AI generation failed: ' + (error.message || 'Unknown error'));
     } finally {
       setIsGenerating(false);
     }
   };
 
   const copyCaption = () => {
-    navigator.clipboard.writeText(caption);
+    navigator.clipboard.writeText(effectiveCaption);
     setCopyStatus('copied');
     setTimeout(() => setCopyStatus('idle'), 2000);
   };
@@ -204,7 +199,7 @@ export default function App() {
     <div className="min-h-screen bg-[#0a0a0a] text-zinc-100 font-sans selection:bg-zinc-700">
       <div className="max-w-7xl mx-auto h-screen flex flex-col md:flex-row overflow-hidden">
         
-        {/* Left Sidebar: Controls & Settings */}
+        {/* Left Sidebar */}
         <div className="w-full md:w-[400px] bg-[#111111] border-r border-zinc-800 flex flex-col h-full">
           <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -241,6 +236,7 @@ export default function App() {
 
                 <TabsContent value="script" className="mt-6 space-y-4">
                   <div className="space-y-4">
+                    {/* AI Topic + Generate */}
                     <div className="space-y-2">
                       <Label className="text-xs uppercase tracking-widest text-zinc-400">AI Topic (Optional)</Label>
                       <div className="flex gap-2">
@@ -253,6 +249,7 @@ export default function App() {
                         <Button 
                           onClick={handleGenerateAIScript}
                           disabled={isGenerating}
+                          title="Generate AI script"
                           className="h-auto aspect-square bg-zinc-100 text-black hover:bg-white disabled:bg-zinc-800"
                         >
                           <Zap className={`w-5 h-5 ${isGenerating ? 'animate-pulse text-yellow-500' : 'fill-current'}`} />
@@ -261,6 +258,7 @@ export default function App() {
                       <p className="text-[10px] text-zinc-500 italic">Leave blank for general industry trends</p>
                     </div>
 
+                    {/* Script */}
                     <div className="space-y-2">
                       <Label className="text-xs uppercase tracking-widest text-zinc-400">Your Script</Label>
                       <Textarea 
@@ -271,25 +269,33 @@ export default function App() {
                       />
                     </div>
 
-                    {caption && (
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <Label className="text-xs uppercase tracking-widest text-zinc-400">TikTok Caption</Label>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={copyCaption}
-                            className="h-6 text-[10px] gap-1 text-zinc-400 hover:text-white"
-                          >
-                            {copyStatus === 'copied' ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
-                            {copyStatus === 'copied' ? 'Copied' : 'Copy'}
-                          </Button>
-                        </div>
-                        <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-lg text-sm text-zinc-300 leading-relaxed font-mono whitespace-pre-wrap">
-                          {caption}
-                        </div>
+                    {/* TikTok Caption — always visible, always editable */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <Label className="text-xs uppercase tracking-widest text-zinc-400">
+                          TikTok Caption
+                          {!caption.trim() && <span className="ml-2 text-zinc-600 normal-case">(auto from script)</span>}
+                        </Label>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={copyCaption}
+                          className="h-6 text-[10px] gap-1 text-zinc-400 hover:text-white"
+                        >
+                          {copyStatus === 'copied' ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                          {copyStatus === 'copied' ? 'Copied' : 'Copy'}
+                        </Button>
                       </div>
-                    )}
+                      <Textarea
+                        value={caption}
+                        onChange={(e) => setCaption(e.target.value)}
+                        placeholder={script.slice(0, 150) + '...'}
+                        className="min-h-[80px] bg-zinc-900 border-zinc-800 focus:border-zinc-600 transition-colors resize-none text-sm font-mono"
+                      />
+                      <p className="text-[10px] text-zinc-600">
+                        {effectiveCaption.length} chars · Will be used as TikTok caption when posting
+                      </p>
+                    </div>
                   </div>
                 </TabsContent>
 
@@ -306,7 +312,7 @@ export default function App() {
                           <div className="flex justify-between items-start">
                             <div className="space-y-1">
                               <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">
-                                {new Date(item.timestamp).toLocaleDateString()} • {item.topic || 'General'}
+                                {new Date(item.timestamp).toLocaleDateString()} · {item.topic || 'General'}
                               </p>
                               <p className="text-xs text-zinc-300 line-clamp-2 italic">"{item.script.slice(0, 60)}..."</p>
                             </div>
@@ -314,10 +320,7 @@ export default function App() {
                               <Button 
                                 variant="ghost" 
                                 size="sm" 
-                                onClick={() => {
-                                  setScript(item.script);
-                                  setCaption(item.caption);
-                                }}
+                                onClick={() => { setScript(item.script); setCaption(item.caption); }}
                                 className="h-7 w-7 p-0 text-zinc-500 hover:text-white"
                               >
                                 <RefreshCw className="w-3 h-3" />
@@ -480,7 +483,6 @@ export default function App() {
               />
             )}
 
-            {/* Overlay UI when not live */}
             <AnimatePresence>
               {!isLive && (
                 <motion.div 
@@ -507,31 +509,38 @@ export default function App() {
             </AnimatePresence>
           </div>
 
-          {/* Download Modal / Toast */}
+          {/* Recording ready toast */}
           <AnimatePresence>
             {recordedBlob && !isRecording && (
               <motion.div 
                 initial={{ y: 100, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: 100, opacity: 0 }}
-                className="absolute bottom-12 left-1/2 -translate-x-1/2 bg-zinc-900 border border-zinc-800 p-4 rounded-2xl flex items-center gap-6 shadow-2xl z-50"
+                className="absolute bottom-12 left-1/2 -translate-x-1/2 bg-zinc-900 border border-zinc-800 p-4 rounded-2xl shadow-2xl z-50 w-[90%] max-w-md"
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-green-500/20 rounded-lg flex items-center justify-center">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 bg-green-500/20 rounded-lg flex items-center justify-center shrink-0">
                     <Video className="w-5 h-5 text-green-500" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-sm font-bold">Recording Ready</p>
-                    <p className="text-[10px] text-zinc-500 uppercase tracking-wider">{(recordedBlob.size / 1024 / 1024).toFixed(2)} MB • WebM Format</p>
+                    <p className="text-[10px] text-zinc-500 uppercase tracking-wider">{(recordedBlob.size / 1024 / 1024).toFixed(2)} MB · WebM</p>
                   </div>
                 </div>
+
+                {/* Caption preview before posting */}
+                <div className="mb-3 p-2 bg-zinc-800 rounded-lg">
+                  <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Caption</p>
+                  <p className="text-xs text-zinc-300 line-clamp-2">{effectiveCaption}</p>
+                </div>
+
                 <div className="flex items-center gap-2">
                   <Button 
                     variant="ghost" 
                     size="sm" 
                     onClick={() => setRecordedBlob(null)}
                     disabled={isPosting}
-                    className="text-zinc-500 hover:text-zinc-100"
+                    className="text-zinc-500 hover:text-zinc-100 flex-1"
                   >
                     Discard
                   </Button>
@@ -540,7 +549,7 @@ export default function App() {
                       size="sm" 
                       onClick={handlePostToTikTok}
                       disabled={isPosting}
-                      className="bg-[#fe2c55] text-white hover:bg-[#ef2950] font-bold shadow-lg shadow-red-500/20"
+                      className="bg-[#fe2c55] text-white hover:bg-[#ef2950] font-bold shadow-lg shadow-red-500/20 flex-1"
                     >
                       {isPosting ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Share2 className="w-4 h-4 mr-2" />}
                       {isPosting ? 'Posting...' : 'Post to TikTok'}
@@ -549,7 +558,7 @@ export default function App() {
                     <Button 
                       size="sm" 
                       onClick={downloadVideo}
-                      className="bg-zinc-100 text-black hover:bg-white font-bold"
+                      className="bg-zinc-100 text-black hover:bg-white font-bold flex-1"
                     >
                       <Download className="w-4 h-4 mr-2" /> Save to Device
                     </Button>

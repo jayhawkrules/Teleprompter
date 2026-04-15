@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Runtime user data — created by historyStore.ts on the server
+data/

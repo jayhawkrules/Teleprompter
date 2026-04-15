@@ -58,7 +58,7 @@ async function serverDelete(id: string): Promise<HistoryItem[] | null> {
 export function useAI(showToast: ToastFn) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [history, setHistory]           = useState<HistoryItem[]>([]);
-  // null = not yet determined; true = server; false = localStorage
+  // null = auth check in-flight; true = server; false = localStorage
   const [useServer, setUseServer]       = useState<boolean | null>(null);
 
   // On mount: try server first, fall back to localStorage
@@ -78,6 +78,25 @@ export function useAI(showToast: ToastFn) {
   }, []);
 
   const addItem = useCallback(async (item: HistoryItem) => {
+    // useServer === null means the auth check is still in-flight.
+    // Wait for it to resolve by queuing a direct server attempt;
+    // if that also returns null (unauthed), fall through to localStorage.
+    if (useServer === null) {
+      const updated = await serverAdd(item);
+      if (updated) {
+        // Auth check will land shortly and set useServer:true — history already on server
+        setHistory(updated);
+        return;
+      }
+      // Not authed — write to localStorage; auth check will set useServer:false
+      setHistory(prev => {
+        const next = [item, ...prev].slice(0, 20);
+        lsSet(next);
+        return next;
+      });
+      return;
+    }
+
     if (useServer) {
       const updated = await serverAdd(item);
       if (updated) { setHistory(updated); return; }
@@ -92,7 +111,7 @@ export function useAI(showToast: ToastFn) {
   }, [useServer]);
 
   const deleteHistoryItem = useCallback(async (id: string) => {
-    if (useServer) {
+    if (useServer === null || useServer) {
       const updated = await serverDelete(id);
       if (updated) { setHistory(updated); return; }
     }

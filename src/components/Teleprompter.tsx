@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import React, { useState, useEffect, useRef } from 'react';
+import { motion } from 'motion/react';
 
 interface TeleprompterProps {
   text: string;
@@ -11,94 +10,161 @@ interface TeleprompterProps {
   opacity: number;
 }
 
-export function Teleprompter({ 
-  text, 
-  fontSize, 
-  scrollSpeed, 
-  isAutoScroll, 
+// Strip punctuation and lowercase for fuzzy matching
+function clean(w: string): string {
+  return w.replace(/[^a-z0-9']/gi, '').toLowerCase();
+}
+
+export function Teleprompter({
+  text,
+  fontSize,
+  scrollSpeed,
+  isAutoScroll,
   isVoiceActive,
-  opacity 
+  opacity,
 }: TeleprompterProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
   const [scrollPos, setScrollPos] = useState(0);
   const [currentWordIndex, setCurrentWordIndex] = useState(-1);
-  const words = text.split(/\s+/);
-  
-  const currentWordIndexRef = useRef(currentWordIndex);
+  const currentWordIndexRef = useRef(-1);
+  const recognitionRef = useRef<any>(null);
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const words = text.split(/\s+/).filter(Boolean);
+  const wordsRef = useRef(words);
+  useEffect(() => { wordsRef.current = text.split(/\s+/).filter(Boolean); }, [text]);
+
+  // Keep ref in sync so recognition closure always reads latest index
   useEffect(() => { currentWordIndexRef.current = currentWordIndex; }, [currentWordIndex]);
 
-  const wordsRef = useRef(words);
-  useEffect(() => { wordsRef.current = words; }, [words]);
-
-  // Speech Recognition setup
+  // ── Voice-sync scroll: update Y when word changes ──────────────────────────
   useEffect(() => {
-    if (!isVoiceActive) return;
-
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      console.warn("Speech recognition not supported in this browser.");
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-
-    recognition.onresult = (event: any) => {
-      const lastResult = event.results[event.results.length - 1];
-      const transcript = lastResult[0].transcript.toLowerCase();
-      
-      // Try to find the spoken words in our text
-      const spokenWords = transcript.split(/\s+/);
-      spokenWords.forEach((word: string) => {
-        const index = wordsRef.current.findIndex((w, i) => i > currentWordIndexRef.current && w.toLowerCase().includes(word));
-        if (index !== -1) {
-          setCurrentWordIndex(index);
-        }
-      });
-    };
-
-    recognition.start();
-    return () => recognition.stop();
-  }, [isVoiceActive]);
-
-  // Auto-scroll logic
-  useEffect(() => {
-    if (!isAutoScroll || isVoiceActive) return;
-
-    const interval = setInterval(() => {
-      setScrollPos(prev => prev + scrollSpeed / 10);
-    }, 16);
-
-    return () => clearInterval(interval);
-  }, [isAutoScroll, isVoiceActive, scrollSpeed]);
-
-  // Voice-sync scroll logic
-  useEffect(() => {
-    if (!isVoiceActive || currentWordIndex === -1) return;
-
-    // Scroll to the current word
-    const wordElement = document.getElementById(`word-${currentWordIndex}`);
-    if (wordElement && containerRef.current) {
-      const containerHeight = containerRef.current.clientHeight;
-      const wordTop = wordElement.offsetTop;
-      // Keep the current word roughly in the upper third
-      setScrollPos(wordTop - containerHeight / 3);
+    if (!isVoiceActive || currentWordIndex < 0) return;
+    const wordEl = document.getElementById(`word-${currentWordIndex}`);
+    if (wordEl && containerRef.current) {
+      const containerH = containerRef.current.clientHeight;
+      setScrollPos(wordEl.offsetTop - containerH / 3);
     }
   }, [currentWordIndex, isVoiceActive]);
 
+  // ── Auto-scroll (timer-based, used when voice is OFF) ─────────────────────
+  useEffect(() => {
+    if (!isAutoScroll || isVoiceActive) return;
+    const interval = setInterval(() => {
+      setScrollPos(prev => prev + scrollSpeed / 10);
+    }, 16);
+    return () => clearInterval(interval);
+  }, [isAutoScroll, isVoiceActive, scrollSpeed]);
+
+  // ── Speech Recognition ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isVoiceActive) {
+      recognitionRef.current?.stop();
+      recognitionRef.current = null;
+      if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+      return;
+    }
+
+    const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) {
+      console.warn('Speech recognition not supported in this browser.');
+      return;
+    }
+
+    let active = true;
+
+    function startRecognition() {
+      if (!active) return;
+
+      const recognition = new SR();
+      recognitionRef.current = recognition;
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+      recognition.maxAlternatives = 1;
+
+      recognition.onresult = (event: any) => {
+        // Collect all interim + final results from this session
+        let fullTranscript = '';
+        for (let i = 0; i < event.results.length; i++) {
+          fullTranscript += event.results[i][0].transcript + ' ';
+        }
+        const spokenWords = fullTranscript.trim().split(/\s+/).map(clean).filter(Boolean);
+
+        const scriptWords = wordsRef.current;
+        let bestIndex = currentWordIndexRef.current;
+
+        // Slide a window of the last 6 spoken words over the script
+        const windowSize = 6;
+        const recentSpoken = spokenWords.slice(-windowSize);
+
+        for (let si = bestIndex + 1; si < scriptWords.length; si++) {
+          const scriptWord = clean(scriptWords[si]);
+          if (!scriptWord) continue;
+          // Match if any recent spoken word starts with or equals this script word
+          const matched = recentSpoken.some(
+            sw => sw === scriptWord || (scriptWord.length > 3 && sw.startsWith(scriptWord.slice(0, Math.floor(scriptWord.length * 0.75))))
+          );
+          if (matched) {
+            bestIndex = si;
+            // Don't break — keep scanning to find the furthest match
+          }
+        }
+
+        if (bestIndex > currentWordIndexRef.current) {
+          setCurrentWordIndex(bestIndex);
+        }
+      };
+
+      recognition.onerror = (e: any) => {
+        // 'no-speech' and 'aborted' are expected — just restart
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+          console.warn('[Voice] Microphone permission denied.');
+          active = false;
+          return;
+        }
+        scheduleRestart();
+      };
+
+      recognition.onend = () => {
+        scheduleRestart();
+      };
+
+      try {
+        recognition.start();
+      } catch (err) {
+        scheduleRestart();
+      }
+    }
+
+    function scheduleRestart() {
+      if (!active) return;
+      if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = setTimeout(() => {
+        if (active) startRecognition();
+      }, 300);
+    }
+
+    startRecognition();
+
+    return () => {
+      active = false;
+      if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+      try { recognitionRef.current?.stop(); } catch {}
+      recognitionRef.current = null;
+    };
+  }, [isVoiceActive]);
+
   return (
-    <div 
+    <div
       ref={containerRef}
       className="absolute inset-0 z-10 pointer-events-none flex flex-col items-center justify-center p-8"
       style={{ backgroundColor: `rgba(0, 0, 0, ${opacity / 100})` }}
     >
       <div className="w-full max-w-md h-full overflow-hidden relative">
-        {/* Focus Area Indicator */}
+        {/* Focus band */}
         <div className="absolute top-1/3 left-0 right-0 h-20 border-y border-white/20 pointer-events-none z-20 bg-white/5" />
-        
+
         <motion.div
           animate={{ y: -scrollPos }}
           transition={{ type: 'spring', damping: 30, stiffness: 100, mass: 0.5 }}
@@ -109,11 +175,11 @@ export function Teleprompter({
               key={i}
               id={`word-${i}`}
               className={`transition-all duration-300 ${
-                i === currentWordIndex 
-                  ? 'text-white font-bold scale-110' 
-                  : i < currentWordIndex 
-                    ? 'text-white/30' 
-                    : 'text-white/80'
+                i === currentWordIndex
+                  ? 'text-white font-bold scale-110'
+                  : i < currentWordIndex
+                  ? 'text-white/30'
+                  : 'text-white/80'
               }`}
               style={{ fontSize: `${fontSize}px` }}
             >

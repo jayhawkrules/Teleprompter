@@ -21,7 +21,6 @@ const TIKTOK_CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET;
 const SESSION_SECRET = process.env.SESSION_SECRET || 'televibe-secret-change-me-in-production';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// Trust reverse proxy (CRITICAL for secure cookies behind nginx/caddy/render)
 app.set('trust proxy', 1);
 
 app.use(cors({
@@ -33,12 +32,6 @@ app.use(cors({
 }));
 
 app.use(express.json());
-
-// ─── Cookie-based session (no memory store — survives server restarts) ────────
-// We store TikTok data in a signed, httpOnly cookie directly.
-// This is simpler and more reliable than express-session on Render
-// because Render's ephemeral filesystem wipes any file-based stores,
-// and the default MemoryStore is cleared on every restart.
 
 const COOKIE_NAME = 'televibe_session';
 
@@ -72,7 +65,7 @@ function setSession(res: express.Response, data: Record<string, any>) {
     httpOnly: true,
     secure: isProduction,
     sameSite: isProduction ? 'none' : 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    maxAge: 7 * 24 * 60 * 60 * 1000,
     path: '/'
   });
 }
@@ -81,15 +74,14 @@ function clearSession(res: express.Response) {
   res.clearCookie(COOKIE_NAME, { path: '/' });
 }
 
-// Need cookie-parser for reading cookies
 import cookieParser from 'cookie-parser';
 app.use(cookieParser());
 
-// ─── AI Script Generation (Server-Side) ─────────────────────────────────────
+// ─── AI Script Generation ────────────────────────────────────────────────────
 
 app.post('/api/generate-script', async (req, res) => {
   if (!GEMINI_API_KEY) {
-    console.error('[Gemini] GEMINI_API_KEY not set in environment variables');
+    console.error('[Gemini] GEMINI_API_KEY not set');
     return res.status(500).json({ error: 'AI service not configured. Please add GEMINI_API_KEY to Render environment variables.' });
   }
 
@@ -97,24 +89,28 @@ app.post('/api/generate-script', async (req, res) => {
   const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
   const topicContext = topic
-    ? `Specifically focus on this topic: "${topic}". Research the latest news, trends, and industry sentiment regarding this.`
-    : `Search the current television industry trends, specifically focusing on music documentaries, concert films, and reality TV.`;
+    ? `The topic is: "${topic}".`
+    : `The topic is current trends in the film and TV industry — music documentaries, concert films, reality TV, streaming wars.`;
 
   const prompt = `
-    ${topicContext}
+You are a social media content writer for a film and TV industry professional.
 
-    Find out what is currently trending and what is in the "ethos" that excites both industry professionals and fans.
-    Include a mix of fun insights and hard truths about where the industry is heading.
+${topicContext}
 
-    Based on this research:
-    1. Write a 30-60 second teleprompter script for a vertical video (TikTok/Reels style).
-       The tone must be extremely conversational, relatable, and authentic — like you're just talking out loud to a friend or your followers.
-       Avoid a "news anchor," "punchy broadcast," or "corporate" voice.
-       Use natural phrasing, casual transitions (e.g., "So, I was just thinking...", "Honestly, it's kind of wild that..."), and keep it grounded.
-       It should feel like a real person sharing a genuine thought or a "hot take" in a relaxed way, not a scripted news update.
-    2. Write a catchy TikTok caption for this video, including relevant hashtags.
+Write two things:
 
-    Return the result as a JSON object with "script" and "caption" fields.
+1. A 30-60 second teleprompter script for a vertical TikTok video.
+   - Tone: extremely conversational, casual, like talking to a friend or your followers.
+   - NOT a news anchor voice. Use natural phrasing like "So I was just thinking...", "Honestly, it's kind of wild that...", "Here's the thing though..."
+   - Keep it grounded, opinionated, and real. A genuine hot take or interesting observation.
+   - No bullet points, no headers — just flowing spoken-word sentences.
+
+2. A TikTok caption for this video.
+   - Punchy first line (no emoji at the start).
+   - Include 5-8 relevant hashtags at the end.
+   - Max 150 characters before the hashtags.
+
+Return ONLY a JSON object with "script" and "caption" fields. No markdown, no extra text.
   `;
 
   try {
@@ -123,7 +119,6 @@ app.post('/api/generate-script', async (req, res) => {
       model: 'gemini-2.0-flash',
       contents: prompt,
       config: {
-        tools: [{ googleSearch: {} }],
         responseMimeType: 'application/json',
         responseSchema: {
           type: Type.OBJECT,
@@ -178,10 +173,7 @@ app.get('/auth/tiktok', (req, res) => {
 app.get('/auth/tiktok/callback', async (req, res) => {
   const { code, error, error_description } = req.query;
 
-  console.log('[TikTok Callback]', {
-    hasCode: !!code,
-    error: error || 'none',
-  });
+  console.log('[TikTok Callback]', { hasCode: !!code, error: error || 'none' });
 
   if (error) {
     console.error('[TikTok Callback] TikTok error:', error, error_description);
@@ -229,7 +221,6 @@ app.get('/auth/tiktok/callback', async (req, res) => {
     const user = userResponse.data.data?.user;
     console.log('[TikTok Callback] User fetched:', user?.display_name);
 
-    // Store in signed cookie — survives server restarts unlike MemoryStore
     setSession(res, {
       tiktokToken: access_token,
       tiktokUser: {

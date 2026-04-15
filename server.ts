@@ -67,16 +67,28 @@ app.get('/auth/tiktok', (req, res) => {
     return res.status(500).send('TikTok Client Key not configured');
   }
 
+  const userAgent = req.headers['user-agent'] || '';
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(userAgent);
+
   const params = new URLSearchParams({
     client_key: TIKTOK_CLIENT_KEY!,
     scope: 'user.info.basic,video.upload,video.publish',
     response_type: 'code',
     redirect_uri: TIKTOK_REDIRECT_URI,
-    state: 'televibe',  // static value — required by TikTok but not validated
+    state: 'televibe',
   });
 
-  const authUrl = `https://www.tiktok.com/v2/auth/authorize/?${params.toString()}`;
-  console.log('[TikTok Auth] Redirecting to:', authUrl);
+  // On mobile, use the web-specific auth URL that stays in browser
+  // instead of triggering the universal link to the TikTok app
+  const baseUrl = 'https://www.tiktok.com/v2/auth/authorize/';
+
+  // Add disable_auto_login=1 to prevent app redirect on mobile
+  if (isMobile) {
+    params.append('disable_auto_login', '1');
+  }
+
+  const authUrl = `${baseUrl}?${params.toString()}`;
+  console.log('[TikTok Auth] isMobile:', isMobile, '| Redirecting to:', authUrl);
   res.redirect(authUrl);
 });
 
@@ -178,8 +190,8 @@ app.get('/auth/tiktok/success', (req, res) => {
         <p style="color:#666;font-size:14px">Returning to TeleVibe...</p>
         <script>
           setTimeout(function() {
-            window.location.replace('/');
-          }, 1000);
+            window.location.replace('/?tiktok=connected');
+          }, 800);
         </script>
       </body>
     </html>

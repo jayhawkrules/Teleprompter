@@ -85,7 +85,26 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchTikTokUser();
+    const params = new URLSearchParams(window.location.search);
+    const justConnected = params.get('tiktok') === 'connected';
+    
+    if (justConnected) {
+      // Clean the URL without reloading
+      window.history.replaceState({}, '', '/');
+      // Retry a few times with delay — cookie needs a moment to be 
+      // attached to subsequent requests after the redirect
+      let attempts = 0;
+      const tryFetch = async () => {
+        attempts++;
+        const user = await fetchTikTokUser();
+        if (!user && attempts < 5) {
+          setTimeout(tryFetch, 800);
+        }
+      };
+      setTimeout(tryFetch, 500);
+    } else {
+      fetchTikTokUser();
+    }
   }, []);
 
   const handleTikTokConnect = () => {

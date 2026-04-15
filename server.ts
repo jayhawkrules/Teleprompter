@@ -145,7 +145,7 @@ async function refreshTikTokToken(
 
 // ─── AI Script Generation ─────────────────────────────────────────────────────
 app.post('/api/generate-script', scriptRateLimit, async (req, res) => {
-  if (!GEMINI_API_KEY) return res.status(500).json({ error: 'AI service not configured.' });
+  if (!GEMINI_API_KEY) return res.status(500).json({ error: 'AI service not configured. Please add GEMINI_API_KEY to environment variables.' });
 
   const { topic } = req.body;
   const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
@@ -181,17 +181,22 @@ Return ONLY a JSON object with "script" and "caption" fields. No markdown, no ex
         },
       },
     });
-    const result = JSON.parse(response.text || '{}');
-    res.json({ script: result.script || 'Failed to generate script.', caption: result.caption || 'Failed to generate caption.' });
+
+    // @google/genai v1.x: response.text is a method, not a property
+    const rawText = typeof response.text === 'function' ? response.text() : response.text;
+    const result  = JSON.parse(rawText || '{}');
+    console.log('[Gemini] Script generated successfully');
+    res.json({
+      script:  result.script  || 'Failed to generate script.',
+      caption: result.caption || 'Failed to generate caption.',
+    });
   } catch (error: any) {
     console.error('[Gemini] Error:', error.message || error);
-    res.status(500).json({ error: 'Failed to generate script: ' + (error.message || 'Unknown error') });
+    res.status(500).json({ error: 'Failed to generate script: ' + (error.message || String(error)) });
   }
 });
 
 // ─── History Routes ──────────────────────────────────────────────────────────────
-
-// GET /api/history — returns all history items for the logged-in user
 app.get('/api/history', (req, res) => {
   const session = getSession(req);
   const openId  = session.tiktokUser?.open_id;
@@ -199,25 +204,20 @@ app.get('/api/history', (req, res) => {
   res.json(getHistory(openId));
 });
 
-// POST /api/history — saves a new item (called client-side after AI generation)
 app.post('/api/history', csrfGuard, (req, res) => {
   const session = getSession(req);
   const openId  = session.tiktokUser?.open_id;
   if (!openId) return res.status(401).json({ error: 'Not authenticated' });
-
   const { script, caption, topic, id, timestamp } = req.body;
   if (!script || !caption) return res.status(400).json({ error: 'script and caption are required' });
-
   const updated = addHistoryItem(openId, { script, caption, topic, id, timestamp });
   res.json(updated);
 });
 
-// DELETE /api/history/:id — removes a single item
 app.delete('/api/history/:id', csrfGuard, (req, res) => {
   const session = getSession(req);
   const openId  = session.tiktokUser?.open_id;
   if (!openId) return res.status(401).json({ error: 'Not authenticated' });
-
   const updated = deleteHistoryItem(openId, req.params.id);
   res.json(updated);
 });

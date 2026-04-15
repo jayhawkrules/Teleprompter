@@ -1,0 +1,5 @@
+{
+  "name": "TeleVibe: Vertical Teleprompter",
+  "description": "A professional vertical teleprompter app with voice-activated auto-scroll and video recording for TikTok and Reels.",
+  "requestFramePermissions": ["camera", "microphone"]
+}

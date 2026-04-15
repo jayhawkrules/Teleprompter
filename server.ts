@@ -6,18 +6,18 @@ import multer from 'multer';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import crypto from 'crypto';
+import { createServer as createViteServer } from 'vite';
 
 dotenv.config();
 
 const app = express();
-const PORT = 3001;
+const PORT = 3000;
 const upload = multer({ storage: multer.memoryStorage() });
 
 // In-memory session store
-// Key: sessionId, Value: { access_token, open_id, state }
 const sessions = new Map<string, any>();
 
-const APP_URL = process.env.APP_URL || 'http://localhost:3000';
+const APP_URL = process.env.APP_URL || `http://localhost:${PORT}`;
 const TIKTOK_CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY;
 const TIKTOK_CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET;
 const REDIRECT_URI = `${APP_URL}/auth/tiktok/callback`;
@@ -29,7 +29,7 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
-// Route 1: GET /auth/tiktok
+// TikTok Routes
 app.get('/auth/tiktok', (req, res) => {
   if (!TIKTOK_CLIENT_KEY) {
     return res.status(500).send('TikTok Client Key not configured');
@@ -38,7 +38,6 @@ app.get('/auth/tiktok', (req, res) => {
   const state = crypto.randomBytes(16).toString('hex');
   const sessionId = req.cookies.sessionId || crypto.randomUUID();
   
-  // Store state in session (or create session)
   const sessionData = sessions.get(sessionId) || {};
   sessions.set(sessionId, { ...sessionData, state });
 
@@ -46,7 +45,7 @@ app.get('/auth/tiktok', (req, res) => {
     httpOnly: true,
     secure: true,
     sameSite: 'none',
-    maxAge: 3600000 // 1 hour
+    maxAge: 3600000
   });
 
   const params = new URLSearchParams({
@@ -60,7 +59,6 @@ app.get('/auth/tiktok', (req, res) => {
   res.redirect(`https://www.tiktok.com/v2/auth/authorize/?${params.toString()}`);
 });
 
-// Route 2: GET /auth/tiktok/callback
 app.get('/auth/tiktok/callback', async (req, res) => {
   const { code, state } = req.query;
   const sessionId = req.cookies.sessionId;
@@ -75,7 +73,6 @@ app.get('/auth/tiktok/callback', async (req, res) => {
   }
 
   try {
-    // Exchange code for tokens
     const tokenResponse = await axios.post('https://open.tiktokapis.com/v2/oauth/token/', 
       new URLSearchParams({
         client_key: TIKTOK_CLIENT_KEY!,
@@ -89,15 +86,11 @@ app.get('/auth/tiktok/callback', async (req, res) => {
     );
 
     const { access_token, open_id } = tokenResponse.data;
-    
-    // Fetch user info
     const userResponse = await axios.get('https://open.tiktokapis.com/v2/user/info/?fields=display_name,avatar_url', {
       headers: { 'Authorization': `Bearer ${access_token}` }
     });
 
     const user = userResponse.data.data.user;
-    
-    // Update session
     sessions.set(sessionId, { ...sessionData, access_token, open_id, user });
 
     res.send(`
@@ -124,7 +117,6 @@ app.get('/auth/tiktok/callback', async (req, res) => {
   }
 });
 
-// Route 3: POST /api/tiktok/post
 app.post('/api/tiktok/post', upload.single('video'), async (req, res) => {
   const sessionId = req.cookies.sessionId;
   const { caption } = req.body;
@@ -139,7 +131,6 @@ app.post('/api/tiktok/post', upload.single('video'), async (req, res) => {
   if (!videoFile) return res.status(400).json({ error: 'No video provided' });
 
   try {
-    // 1. Initialize Upload
     const initResponse = await axios.post('https://open.tiktokapis.com/v2/post/publish/video/init/', {
       post_info: {
         title: caption || 'Created with TeleVibe',
@@ -163,7 +154,6 @@ app.post('/api/tiktok/post', upload.single('video'), async (req, res) => {
 
     const { upload_url, publish_id } = initResponse.data.data;
 
-    // 2. Upload Video
     await axios.put(upload_url, videoFile.buffer, {
       headers: {
         'Content-Type': 'video/webm',
@@ -194,6 +184,24 @@ app.post('/api/auth/logout', (req, res) => {
   res.json({ success: true });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Backend server running on http://localhost:${PORT}`);
-});
+async function startServer() {
+  if (process.env.NODE_ENV !== 'production') {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on http://0.0.0.0:${PORT}`);
+  });
+}
+
+startServer();

@@ -20,7 +20,10 @@ export async function generateIndustryScript(customTopic?: string): Promise<Gene
     
     Based on this research:
     1. Write a 30-60 second teleprompter script for a vertical video (TikTok/Reels style). 
-       The script should be engaging, punchy, and sound like a knowledgeable industry insider sharing a quick update.
+       The tone must be extremely conversational, relatable, and authentic—like you're just talking out loud to a friend or your followers. 
+       Avoid a "news anchor," "punchy broadcast," or "corporate" voice. 
+       Use natural phrasing, casual transitions (e.g., "So, I was just thinking...", "Honestly, it's kind of wild that..."), and keep it grounded. 
+       It should feel like a real person sharing a genuine thought or a "hot take" in a relaxed way, not a scripted news update.
     2. Write a catchy TikTok caption for this video, including relevant hashtags.
     
     Return the result as a JSON object with "script" and "caption" fields.

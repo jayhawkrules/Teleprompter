@@ -19,6 +19,36 @@ const TIKTOK_REDIRECT_URI = process.env.TIKTOK_REDIRECT_URI || 'https://teleprom
 const TIKTOK_CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY;
 const TIKTOK_CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET;
 const REDIRECT_URI = TIKTOK_REDIRECT_URI;
+const STATE_SECRET = process.env.SESSION_SECRET || 'televibe-state-secret-2024';
+
+const createSignedState = (): string => {
+  const random = crypto.randomBytes(16).toString('hex');
+  const timestamp = Date.now().toString(36);
+  const payload = `${random}.${timestamp}`;
+  const sig = crypto.createHmac('sha256', STATE_SECRET)
+    .update(payload).digest('hex').substring(0, 16);
+  return `${payload}.${sig}`;
+};
+
+const verifySignedState = (state: string): boolean => {
+  try {
+    const parts = state.split('.');
+    if (parts.length !== 3) return false;
+    const [random, timestamp, sig] = parts;
+    // Check expiry — reject if older than 10 minutes
+    const createdAt = parseInt(timestamp, 36);
+    if (Date.now() - createdAt > 600000) return false;
+    const payload = `${random}.${timestamp}`;
+    const expected = crypto.createHmac('sha256', STATE_SECRET)
+      .update(payload).digest('hex').substring(0, 16);
+    return crypto.timingSafeEqual(
+      Buffer.from(sig.padEnd(32, '0')),
+      Buffer.from(expected.padEnd(32, '0'))
+    );
+  } catch {
+    return false;
+  }
+};
 
 app.use(cors({
   origin: [
@@ -35,15 +65,9 @@ app.get('/auth/tiktok', (req, res) => {
   if (!TIKTOK_CLIENT_KEY) {
     return res.status(500).send('TikTok Client Key not configured');
   }
-  const state = crypto.randomBytes(16).toString('hex');
-  
-  // Store state in a short-lived cookie — no session map needed
-  res.cookie('tiktok_oauth_state', state, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'none',
-    maxAge: 600000 // 10 minutes
-  });
+
+  const state = createSignedState();
+  // NO cookie needed — state is self-verifying via HMAC signature
 
   const params = new URLSearchParams({
     client_key: TIKTOK_CLIENT_KEY,
@@ -59,23 +83,23 @@ app.get('/auth/tiktok', (req, res) => {
 app.get('/auth/tiktok/callback', async (req, res) => {
   const { code, state, error } = req.query;
 
-  // User cancelled
   if (error) {
-    return res.send(`<html><body><p style="font-family:sans-serif;padding:40px;color:#666">
-      Authorization cancelled. You can close this window.</p>
-      <script>setTimeout(()=>window.close(),2000)</script></body></html>`);
+    return res.send(`
+      <html><body style="font-family:sans-serif;padding:40px;color:#666;background:#111;text-align:center">
+        <p>Authorization cancelled. Closing window...</p>
+        <script>setTimeout(()=>window.close(),2000)</script>
+      </body></html>`);
   }
 
-  const storedState = req.cookies.tiktok_oauth_state;
-
-  if (!state || !storedState || state !== storedState) {
-    return res.send(`<html><body><p style="font-family:sans-serif;padding:40px;color:#c00">
-      Session expired or invalid. Please close this window and try connecting again.</p>
-      <script>setTimeout(()=>window.close(),3000)</script></body></html>`);
+  // Verify the signed state — no cookie lookup needed
+  if (!state || !verifySignedState(state as string)) {
+    return res.send(`
+      <html><body style="font-family:sans-serif;padding:40px;color:#c00;background:#111;text-align:center">
+        <h3>Link expired</h3>
+        <p>This authorization link has expired. Please close this window and click "Connect Account" again.</p>
+        <script>setTimeout(()=>window.close(),4000)</script>
+      </body></html>`);
   }
-
-  // Clear state cookie immediately
-  res.clearCookie('tiktok_oauth_state', { secure: true, sameSite: 'none' });
 
   try {
     const tokenResponse = await axios.post(
@@ -99,33 +123,32 @@ app.get('/auth/tiktok/callback', async (req, res) => {
 
     const user = userResponse.data.data.user;
 
-    // Store token and user in httpOnly cookies — persists across Cloud Run restarts
-    res.cookie('tiktok_token', access_token, {
+    // Set auth cookies on the RESPONSE — these go to whichever context
+    // (popup or same tab) made the callback request
+    const cookieOpts = {
       httpOnly: true,
       secure: true,
-      sameSite: 'none',
+      sameSite: 'none' as const,
       maxAge: 86400000
-    });
+    };
+
+    res.cookie('tiktok_token', access_token, cookieOpts);
     res.cookie('tiktok_user', JSON.stringify({
       display_name: user.display_name,
       avatar_url: user.avatar_url,
       open_id
-    }), {
-      httpOnly: false, // must be readable by /api/tiktok/me
-      secure: true,
-      sameSite: 'none',
-      maxAge: 86400000
-    });
+    }), { ...cookieOpts, httpOnly: false });
 
-    // Redirect to /auth/tiktok/success — DO NOT use postMessage here
-    // because window.opener is null after cross-origin navigation
+    // Redirect to success page
     res.redirect('/auth/tiktok/success');
 
   } catch (err: any) {
     console.error('TikTok Callback Error:', err.response?.data || err.message);
-    res.send(`<html><body><p style="font-family:sans-serif;padding:40px;color:#c00">
-      Authentication failed. Please close this window and try again.</p>
-      <script>setTimeout(()=>window.close(),3000)</script></body></html>`);
+    res.send(`
+      <html><body style="font-family:sans-serif;padding:40px;color:#c00;background:#111;text-align:center">
+        <p>Authentication failed. Please close this window and try again.</p>
+        <script>setTimeout(()=>window.close(),3000)</script>
+      </body></html>`);
   }
 });
 
@@ -135,27 +158,30 @@ app.get('/auth/tiktok/success', (req, res) => {
       <head><title>Connected!</title></head>
       <body style="font-family:sans-serif;text-align:center;padding:60px;
                    background:#0a0a0a;color:#fff">
-        <h2 style="margin-bottom:8px">✓ TikTok Connected!</h2>
-        <p style="color:#888;font-size:14px">Redirecting back to TeleVibe...</p>
+        <h2>✓ TikTok Connected!</h2>
+        <p style="color:#888;font-size:14px">Taking you back to TeleVibe...</p>
         <script>
-          // Try popup close first
-          try {
-            if (window.opener) {
-              window.opener.postMessage({ tiktokConnected: true }, '*');
-              setTimeout(() => window.close(), 800);
-              return;
-            }
-          } catch(e) {}
-          // Same-tab fallback — go back to app
-          setTimeout(() => {
+          (function() {
+            // Case 1: we are in a popup — notify parent and close
             try {
-              const returnUrl = sessionStorage.getItem('tiktok_auth_return') || '/';
-              sessionStorage.removeItem('tiktok_auth_return');
-              window.location.href = returnUrl;
-            } catch(e) {
-              window.location.href = '/';
-            }
-          }, 1000);
+              if (window.opener && !window.opener.closed) {
+                window.opener.postMessage({ tiktokConnected: true }, '*');
+                setTimeout(() => window.close(), 800);
+                return;
+              }
+            } catch(e) {}
+
+            // Case 2: same-tab redirect — go back to app
+            setTimeout(function() {
+              try {
+                var returnUrl = sessionStorage.getItem('tiktok_return') || '/';
+                sessionStorage.removeItem('tiktok_return');
+                window.location.replace(returnUrl);
+              } catch(e) {
+                window.location.replace('/');
+              }
+            }, 1000);
+          })();
         </script>
       </body>
     </html>
@@ -223,7 +249,6 @@ app.post('/api/auth/logout', (req, res) => {
   const cookieOpts = { secure: true, sameSite: 'none' as const };
   res.clearCookie('tiktok_token', cookieOpts);
   res.clearCookie('tiktok_user', cookieOpts);
-  res.clearCookie('tiktok_oauth_state', cookieOpts);
   res.json({ success: true });
 });
 

@@ -65,6 +65,7 @@ export default function App() {
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
   const [tiktokUser, setTiktokUser] = useState<any>(null);
   const [isPosting, setIsPosting] = useState(false);
+  const [isTikTokLoading, setIsTikTokLoading] = useState(false);
 
   const fetchTikTokUser = async (): Promise<any | null> => {
     try {
@@ -97,36 +98,34 @@ export default function App() {
   }, []);
 
   const handleTikTokConnect = () => {
-    // Try opening a popup first
-    const popup = window.open(
-      '/auth/tiktok',
-      'tiktok_auth',
-      'width=600,height=700,scrollbars=yes,resizable=yes'
-    );
+    // Try popup first (desktop)
+    let popup: Window | null = null;
+    try {
+      popup = window.open(
+        '/auth/tiktok',
+        'tiktok_auth',
+        'width=600,height=700,scrollbars=yes,resizable=yes'
+      );
+    } catch(e) {}
 
-    // If popup was blocked (returns null or has no location), fall back
-    // to redirecting the current tab
-    if (!popup || popup.closed || typeof popup.closed === 'undefined') {
-      // Store current location so we can return after auth
-      try {
-        sessionStorage.setItem('tiktok_auth_return', window.location.href);
-      } catch(e) {}
-      window.location.href = '/auth/tiktok';
+    if (popup && !popup.closed) {
+      // Popup worked — poll until it closes then refresh user state
+      const pollInterval = setInterval(async () => {
+        if (!popup || popup.closed) {
+          clearInterval(pollInterval);
+          await fetchTikTokUser();
+        }
+      }, 1000);
+      setTimeout(() => clearInterval(pollInterval), 300000);
       return;
     }
 
-    // Popup opened successfully — poll until it closes
-    const pollInterval = setInterval(async () => {
-      if (!popup || popup.closed) {
-        clearInterval(pollInterval);
-        // Popup closed — check if auth completed
-        const user = await fetchTikTokUser();
-        return;
-      }
-    }, 1000);
-
-    // Safety: stop polling after 5 minutes
-    setTimeout(() => clearInterval(pollInterval), 300000);
+    // Popup blocked (mobile) — use same-tab redirect
+    setIsTikTokLoading(true);
+    try {
+      sessionStorage.setItem('tiktok_return', window.location.href);
+    } catch(e) {}
+    window.location.href = '/auth/tiktok';
   };
 
   const handleTikTokLogout = async () => {
@@ -431,9 +430,14 @@ export default function App() {
                         </div>
                         <Button 
                           onClick={handleTikTokConnect}
+                          disabled={isTikTokLoading}
                           className="w-full bg-white text-black hover:bg-zinc-200 font-bold h-12 rounded-xl"
                         >
-                          Connect Account
+                          {isTikTokLoading ? (
+                            <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Connecting...</>
+                          ) : (
+                            'Connect Account'
+                          )}
                         </Button>
                       </>
                     )}

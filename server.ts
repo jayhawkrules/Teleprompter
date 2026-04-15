@@ -133,18 +133,29 @@ app.get('/auth/tiktok/success', (req, res) => {
   res.send(`
     <html>
       <head><title>Connected!</title></head>
-      <body style="font-family:sans-serif;text-align:center;padding:60px;background:#0a0a0a;color:#fff">
-        <h2 style="margin-bottom:8px">✓ TikTok Connected</h2>
-        <p style="color:#888;font-size:14px">This window will close automatically...</p>
+      <body style="font-family:sans-serif;text-align:center;padding:60px;
+                   background:#0a0a0a;color:#fff">
+        <h2 style="margin-bottom:8px">✓ TikTok Connected!</h2>
+        <p style="color:#888;font-size:14px">Redirecting back to TeleVibe...</p>
         <script>
-          // Signal the parent window that auth is complete
+          // Try popup close first
           try {
             if (window.opener) {
               window.opener.postMessage({ tiktokConnected: true }, '*');
+              setTimeout(() => window.close(), 800);
+              return;
             }
           } catch(e) {}
-          // Always close after short delay regardless of opener
-          setTimeout(() => window.close(), 1500);
+          // Same-tab fallback — go back to app
+          setTimeout(() => {
+            try {
+              const returnUrl = sessionStorage.getItem('tiktok_auth_return') || '/';
+              sessionStorage.removeItem('tiktok_auth_return');
+              window.location.href = returnUrl;
+            } catch(e) {
+              window.location.href = '/';
+            }
+          }, 1000);
         </script>
       </body>
     </html>

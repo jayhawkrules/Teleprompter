@@ -66,17 +66,21 @@ export default function App() {
   const [tiktokUser, setTiktokUser] = useState<any>(null);
   const [isPosting, setIsPosting] = useState(false);
 
-  const fetchTikTokUser = async () => {
+  const fetchTikTokUser = async (): Promise<any | null> => {
     try {
-      const res = await fetch('/api/tiktok/me');
+      const res = await fetch('/api/tiktok/me', { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
-        setTiktokUser(data.user);
-      } else {
-        setTiktokUser(null);
+        if (data.user) {
+          setTiktokUser(data.user);
+          return data.user;
+        }
       }
+      setTiktokUser(null);
+      return null;
     } catch (e) {
       setTiktokUser(null);
+      return null;
     }
   };
 
@@ -92,12 +96,41 @@ export default function App() {
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  const handleTikTokConnect = async () => {
-    window.open('/auth/tiktok', 'tiktok_auth', 'width=600,height=700');
+  const handleTikTokConnect = () => {
+    // Try opening a popup first
+    const popup = window.open(
+      '/auth/tiktok',
+      'tiktok_auth',
+      'width=600,height=700,scrollbars=yes,resizable=yes'
+    );
+
+    // If popup was blocked (returns null or has no location), fall back
+    // to redirecting the current tab
+    if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+      // Store current location so we can return after auth
+      try {
+        sessionStorage.setItem('tiktok_auth_return', window.location.href);
+      } catch(e) {}
+      window.location.href = '/auth/tiktok';
+      return;
+    }
+
+    // Popup opened successfully — poll until it closes
+    const pollInterval = setInterval(async () => {
+      if (!popup || popup.closed) {
+        clearInterval(pollInterval);
+        // Popup closed — check if auth completed
+        const user = await fetchTikTokUser();
+        return;
+      }
+    }, 1000);
+
+    // Safety: stop polling after 5 minutes
+    setTimeout(() => clearInterval(pollInterval), 300000);
   };
 
   const handleTikTokLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
     setTiktokUser(null);
   };
 
@@ -111,7 +144,8 @@ export default function App() {
 
       const res = await fetch('/api/tiktok/post', {
         method: 'POST',
-        body: formData
+        body: formData,
+        credentials: 'include'
       });
 
       if (res.ok) {

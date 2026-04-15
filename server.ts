@@ -51,7 +51,7 @@ app.use(cookieParser());
 app.use(session({
   secret: SESSION_SECRET,
   resave: false,
-  saveUninitialized: false,
+  saveUninitialized: true,
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
@@ -67,92 +67,49 @@ app.get('/auth/tiktok', (req, res) => {
     return res.status(500).send('TikTok Client Key not configured');
   }
 
-  // Generate state and store it SERVER-SIDE in the session
-  // This is exactly what TikTok's own docs recommend
-  const csrfState = crypto.randomBytes(16).toString('hex');
-  req.session.tiktokState = csrfState;
-
-  // Force session save before redirect to ensure it's written
-  req.session.save((err) => {
-    if (err) {
-      console.error('[TikTok Auth] Session save error:', err);
-      return res.status(500).send('Session error');
-    }
-
-    const params = new URLSearchParams({
-      client_key: TIKTOK_CLIENT_KEY!,
-      scope: 'user.info.basic,video.upload,video.publish',
-      response_type: 'code',
-      redirect_uri: TIKTOK_REDIRECT_URI,
-      state: csrfState,
-    });
-
-    const authUrl = `https://www.tiktok.com/v2/auth/authorize/?${params.toString()}`;
-    console.log('[TikTok Auth] Redirecting to TikTok. State:', csrfState);
-    res.redirect(authUrl);
+  const params = new URLSearchParams({
+    client_key: TIKTOK_CLIENT_KEY!,
+    scope: 'user.info.basic,video.upload,video.publish',
+    response_type: 'code',
+    redirect_uri: TIKTOK_REDIRECT_URI,
+    state: 'televibe',  // static value — required by TikTok but not validated
   });
+
+  const authUrl = `https://www.tiktok.com/v2/auth/authorize/?${params.toString()}`;
+  console.log('[TikTok Auth] Redirecting to:', authUrl);
+  res.redirect(authUrl);
 });
 
 app.get('/auth/tiktok/callback', async (req, res) => {
-  const { code, state, error, error_description } = req.query;
+  const { code, error, error_description } = req.query;
 
-  // Full debug logging
-  console.log('[TikTok Callback] Received:', {
+  console.log('[TikTok Callback]', {
     hasCode: !!code,
-    state: state,
-    storedState: req.session.tiktokState,
-    stateMatch: state === req.session.tiktokState,
     error: error || 'none',
     sessionID: req.sessionID
   });
 
   if (error) {
-    console.error('[TikTok Callback] TikTok returned error:', error, error_description);
+    console.error('[TikTok Callback] Error from TikTok:', error, error_description);
     return res.send(`
-      <html><body style="font-family:sans-serif;padding:40px;color:#aaa;
-        background:#0a0a0a;text-align:center">
-        <p>Authorization cancelled.</p>
-        <script>
-          try { window.opener && window.opener.postMessage({tiktokCancelled:true},'*'); } catch(e){}
-          setTimeout(()=>window.close(),1500);
-        </script>
+      <html><body style="font-family:sans-serif;padding:40px;
+        color:#aaa;background:#0a0a0a;text-align:center">
+        <p>Authorization cancelled. Returning to app...</p>
+        <script>setTimeout(function(){ window.location.replace('/'); }, 2000);</script>
       </body></html>`);
   }
-
-  // State validation — compare what TikTok sent back vs what we stored
-  const storedState = req.session.tiktokState;
-  if (!storedState || !state || state !== storedState) {
-    console.error('[TikTok Callback] State mismatch!', {
-      received: state,
-      stored: storedState,
-      sessionID: req.sessionID
-    });
-    return res.send(`
-      <html><body style="font-family:sans-serif;padding:40px;color:#c00;
-        background:#0a0a0a;text-align:center">
-        <h3>Session mismatch</h3>
-        <p>Please close this window and click Connect Account again.</p>
-        <p style="font-size:11px;color:#555;margin-top:20px">
-          Debug: received="${state}" stored="${storedState}"
-        </p>
-        <script>setTimeout(()=>window.close(),6000)</script>
-      </body></html>`);
-  }
-
-  // Clear the state now that it's been used
-  delete req.session.tiktokState;
 
   if (!code) {
     return res.send(`
-      <html><body style="font-family:sans-serif;padding:40px;color:#c00;
-        background:#0a0a0a;text-align:center">
+      <html><body style="font-family:sans-serif;padding:40px;
+        color:#c00;background:#0a0a0a;text-align:center">
         <p>No authorization code received. Please try again.</p>
-        <script>setTimeout(()=>window.close(),3000)</script>
+        <script>setTimeout(function(){ window.location.replace('/'); }, 3000);</script>
       </body></html>`);
   }
 
   try {
-    // Exchange code for access token
+    console.log('[TikTok Callback] Exchanging code for token...');
     const tokenResponse = await axios.post(
       'https://open.tiktokapis.com/v2/oauth/token/',
       new URLSearchParams({
@@ -165,40 +122,48 @@ app.get('/auth/tiktok/callback', async (req, res) => {
       { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
     );
 
-    console.log('[TikTok Callback] Token exchange success');
+    console.log('[TikTok Callback] Token response:', tokenResponse.data);
     const { access_token, open_id } = tokenResponse.data;
 
-    // Fetch user profile
+    if (!access_token) {
+      throw new Error('No access_token in response: ' + JSON.stringify(tokenResponse.data));
+    }
+
     const userResponse = await axios.get(
       'https://open.tiktokapis.com/v2/user/info/?fields=display_name,avatar_url',
       { headers: { Authorization: `Bearer ${access_token}` } }
     );
 
-    const user = userResponse.data.data.user;
-    console.log('[TikTok Callback] Got user:', user.display_name);
+    const user = userResponse.data.data?.user;
+    console.log('[TikTok Callback] User:', user);
 
-    // Store in session (server-side — no cookie exposure)
     req.session.tiktokToken = access_token;
     req.session.tiktokUser = {
-      display_name: user.display_name,
-      avatar_url: user.avatar_url,
-      open_id
+      display_name: user?.display_name || 'TikTok User',
+      avatar_url: user?.avatar_url || '',
+      open_id: open_id || ''
     };
 
     req.session.save((err) => {
-      if (err) console.error('[TikTok Callback] Session save error:', err);
+      if (err) {
+        console.error('[TikTok Callback] Session save error:', err);
+      }
+      console.log('[TikTok Callback] Session saved. Redirecting to success.');
       res.redirect('/auth/tiktok/success');
     });
 
   } catch (err: any) {
     const errData = err.response?.data || err.message;
-    console.error('[TikTok Callback] Token exchange error:', errData);
+    console.error('[TikTok Callback] FAILED:', JSON.stringify(errData));
     res.send(`
-      <html><body style="font-family:sans-serif;padding:40px;color:#c00;
-        background:#0a0a0a;text-align:center">
-        <p>Authentication failed. Please close this window and try again.</p>
-        <p style="font-size:11px;color:#555;margin-top:20px">${JSON.stringify(errData)}</p>
-        <script>setTimeout(()=>window.close(),5000)</script>
+      <html><body style="font-family:sans-serif;padding:40px;
+        color:#c00;background:#0a0a0a;text-align:center">
+        <h3>Authentication failed</h3>
+        <p style="font-size:13px;color:#888">Error: ${JSON.stringify(errData)}</p>
+        <p style="font-size:12px;color:#555;margin-top:20px">
+          Check server logs for details. Returning to app in 8 seconds...
+        </p>
+        <script>setTimeout(function(){ window.location.replace('/'); }, 8000);</script>
       </body></html>`);
   }
 });

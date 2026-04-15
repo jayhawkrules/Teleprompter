@@ -27,7 +27,11 @@ import {
   RefreshCw,
   Share2,
   LogOut,
-  User
+  User,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -35,6 +39,12 @@ interface HistoryItem extends GeneratedContent {
   id: string;
   timestamp: number;
   topic?: string;
+}
+
+interface Toast {
+  id: string;
+  type: 'success' | 'error' | 'info';
+  message: string;
 }
 
 const safeGetStorage = (key: string) => {
@@ -64,9 +74,17 @@ export default function App() {
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
   const [tiktokUser, setTiktokUser] = useState<any>(null);
   const [isPosting, setIsPosting] = useState(false);
+  const [toasts, setToasts] = useState<Toast[]>([]);
 
-  // Derive effective caption: use caption state if set, else first 150 chars of script
   const effectiveCaption = caption.trim() || script.slice(0, 150);
+
+  const showToast = (type: Toast['type'], message: string) => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts(prev => [...prev, { id, type, message }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+  };
+
+  const dismissToast = (id: string) => setToasts(prev => prev.filter(t => t.id !== id));
 
   const fetchTikTokUser = async (): Promise<any | null> => {
     try {
@@ -118,7 +136,6 @@ export default function App() {
     try {
       const formData = new FormData();
       formData.append('video', recordedBlob, 'video.webm');
-      // Always send effectiveCaption so there's always a caption
       formData.append('caption', effectiveCaption);
 
       const res = await fetch('/api/tiktok/post', {
@@ -128,14 +145,14 @@ export default function App() {
       });
 
       if (res.ok) {
-        alert('Successfully posted to TikTok!');
+        showToast('success', 'Successfully posted to TikTok!');
         setRecordedBlob(null);
       } else {
         const err = await res.json();
-        alert(`Failed to post: ${err.error}`);
+        showToast('error', `Failed to post: ${err.error}`);
       }
     } catch (e) {
-      alert('Failed to post to TikTok');
+      showToast('error', 'Failed to post to TikTok. Check your connection and try again.');
     } finally {
       setIsPosting(false);
     }
@@ -144,7 +161,7 @@ export default function App() {
   const saveToHistory = (content: GeneratedContent, topic?: string) => {
     const newItem: HistoryItem = {
       ...content,
-      id: Math.random().toString(36).substr(2, 9),
+      id: Math.random().toString(36).substring(2, 9),
       timestamp: Date.now(),
       topic
     };
@@ -166,9 +183,10 @@ export default function App() {
       setScript(result.script);
       setCaption(result.caption);
       saveToHistory(result, aiTopic);
+      showToast('success', 'Script generated!');
     } catch (error: any) {
       console.error('AI Generation failed:', error);
-      alert('AI generation failed: ' + (error.message || 'Unknown error'));
+      showToast('error', 'AI generation failed: ' + (error.message || 'Unknown error'));
     } finally {
       setIsGenerating(false);
     }
@@ -236,7 +254,6 @@ export default function App() {
 
                 <TabsContent value="script" className="mt-6 space-y-4">
                   <div className="space-y-4">
-                    {/* AI Topic + Generate */}
                     <div className="space-y-2">
                       <Label className="text-xs uppercase tracking-widest text-zinc-400">AI Topic (Optional)</Label>
                       <div className="flex gap-2">
@@ -258,7 +275,6 @@ export default function App() {
                       <p className="text-[10px] text-zinc-500 italic">Leave blank for general industry trends</p>
                     </div>
 
-                    {/* Script */}
                     <div className="space-y-2">
                       <Label className="text-xs uppercase tracking-widest text-zinc-400">Your Script</Label>
                       <Textarea 
@@ -269,7 +285,6 @@ export default function App() {
                       />
                     </div>
 
-                    {/* TikTok Caption — always visible, always editable */}
                     <div className="space-y-2">
                       <div className="flex justify-between items-center">
                         <Label className="text-xs uppercase tracking-widest text-zinc-400">
@@ -320,7 +335,7 @@ export default function App() {
                               <Button 
                                 variant="ghost" 
                                 size="sm" 
-                                onClick={() => { setScript(item.script); setCaption(item.caption); }}
+                                onClick={() => { setScript(item.script); setCaption(item.caption); showToast('info', 'Script loaded from history'); }}
                                 className="h-7 w-7 p-0 text-zinc-500 hover:text-white"
                               >
                                 <RefreshCw className="w-3 h-3" />
@@ -444,7 +459,7 @@ export default function App() {
                 <Button 
                   variant="outline" 
                   onClick={() => setIsLive(false)}
-                  className="h-14 border-zinc-800 hover:bg-zinc-800 rounded-xl font-bold"
+                  className="h-14 border-zinc-800 hover:bg-zinc-800 rounded-xl font-bold text-black"
                 >
                   Exit
                 </Button>
@@ -528,7 +543,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Caption preview before posting */}
                 <div className="mb-3 p-2 bg-zinc-800 rounded-lg">
                   <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Caption</p>
                   <p className="text-xs text-zinc-300 line-clamp-2">{effectiveCaption}</p>
@@ -567,6 +581,34 @@ export default function App() {
               </motion.div>
             )}
           </AnimatePresence>
+
+          {/* Toast notifications */}
+          <div className="absolute top-6 right-6 z-[60] flex flex-col gap-2 w-80">
+            <AnimatePresence>
+              {toasts.map(toast => (
+                <motion.div
+                  key={toast.id}
+                  initial={{ x: 80, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  exit={{ x: 80, opacity: 0 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                  className={`flex items-start gap-3 p-4 rounded-xl border shadow-2xl ${
+                    toast.type === 'success' ? 'bg-zinc-900 border-green-500/30' :
+                    toast.type === 'error'   ? 'bg-zinc-900 border-red-500/30' :
+                                              'bg-zinc-900 border-zinc-700'
+                  }`}
+                >
+                  {toast.type === 'success' && <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />}
+                  {toast.type === 'error'   && <XCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />}
+                  {toast.type === 'info'    && <AlertCircle className="w-5 h-5 text-zinc-400 shrink-0 mt-0.5" />}
+                  <p className="text-sm text-zinc-200 flex-1 leading-snug">{toast.message}</p>
+                  <button onClick={() => dismissToast(toast.id)} className="text-zinc-600 hover:text-zinc-300 shrink-0">
+                    <X className="w-4 h-4" />
+                  </button>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
     </div>

@@ -65,7 +65,6 @@ export default function App() {
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
   const [tiktokUser, setTiktokUser] = useState<any>(null);
   const [isPosting, setIsPosting] = useState(false);
-  const [isTikTokLoading, setIsTikTokLoading] = useState(false);
 
   const fetchTikTokUser = async (): Promise<any | null> => {
     try {
@@ -87,43 +86,12 @@ export default function App() {
 
   useEffect(() => {
     fetchTikTokUser();
-
-    const handleMessage = async (event: MessageEvent) => {
-      if (event.data?.tiktokConnected) {
-        // user data is in the cookie — fetch it from the server
-        await fetchTikTokUser();
-      }
-    };
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
   }, []);
 
   const handleTikTokConnect = () => {
-    let popup: Window | null = null;
-    try {
-      popup = window.open(
-        '/auth/tiktok',
-        'tiktok_auth',
-        'width=600,height=700,scrollbars=yes,resizable=yes'
-      );
-    } catch(e) {}
-
-    if (popup && !popup.closed) {
-      // Desktop: popup opened — poll until closed then refresh
-      const poll = setInterval(async () => {
-        if (!popup || popup.closed) {
-          clearInterval(poll);
-          setIsTikTokLoading(false);
-          await fetchTikTokUser();
-        }
-      }, 1000);
-      setTimeout(() => clearInterval(poll), 300000);
-      return;
-    }
-
-    // Mobile fallback: same-tab redirect
-    setIsTikTokLoading(true);
-    try { sessionStorage.setItem('tiktok_return', window.location.href); } catch(e) {}
+    // Same-tab redirect — most reliable OAuth pattern.
+    // Popup approach is blocked by modern browsers when the
+    // auth provider is a cross-site domain.
     window.location.href = '/auth/tiktok';
   };
 
@@ -429,13 +397,9 @@ export default function App() {
                         </div>
                         <Button
                           onClick={handleTikTokConnect}
-                          disabled={isTikTokLoading}
-                          className="w-full bg-white text-black hover:bg-zinc-200 font-bold h-12 rounded-xl disabled:opacity-60"
+                          className="w-full bg-white text-black hover:bg-zinc-200 font-bold h-12 rounded-xl"
                         >
-                          {isTikTokLoading
-                            ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Connecting...</>
-                            : 'Connect Account'
-                          }
+                          Connect Account
                         </Button>
                       </>
                     )}

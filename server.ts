@@ -55,7 +55,7 @@ app.use(session({
   cookie: {
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    maxAge: 10 * 60 * 1000,  // 10 minutes — just long enough for OAuth
+    maxAge: 24 * 60 * 60 * 1000,  // 24 hours
     httpOnly: true
   }
 }));
@@ -210,28 +210,11 @@ app.get('/auth/tiktok/success', (req, res) => {
       <body style="font-family:sans-serif;text-align:center;padding:60px;
                    background:#0a0a0a;color:#fff">
         <h2 style="color:#4ade80">✓ TikTok Connected!</h2>
-        <p style="color:#666;font-size:14px">Taking you back to TeleVibe...</p>
+        <p style="color:#666;font-size:14px">Returning to TeleVibe...</p>
         <script>
-          (function() {
-            // Popup: notify parent window and close
-            try {
-              if (window.opener && !window.opener.closed) {
-                window.opener.postMessage({ tiktokConnected: true }, '*');
-                setTimeout(function() { window.close(); }, 1000);
-                return;
-              }
-            } catch(e) {}
-            // Same-tab flow: go back to app
-            setTimeout(function() {
-              try {
-                var returnUrl = sessionStorage.getItem('tiktok_return') || '/';
-                sessionStorage.removeItem('tiktok_return');
-                window.location.replace(returnUrl);
-              } catch(e) {
-                window.location.replace('/');
-              }
-            }, 1000);
-          })();
+          setTimeout(function() {
+            window.location.replace('/');
+          }, 1000);
         </script>
       </body>
     </html>

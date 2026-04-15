@@ -14,9 +14,6 @@ const app = express();
 const PORT = 3000;
 const upload = multer({ storage: multer.memoryStorage() });
 
-// In-memory session store
-const sessions = new Map<string, any>();
-
 const APP_URL = process.env.APP_URL || `http://localhost:${PORT}`;
 const TIKTOK_REDIRECT_URI = process.env.TIKTOK_REDIRECT_URI || 'https://teleprompter.producinghollywood.com/auth/tiktok/callback';
 const TIKTOK_CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY;
@@ -24,7 +21,10 @@ const TIKTOK_CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET;
 const REDIRECT_URI = TIKTOK_REDIRECT_URI;
 
 app.use(cors({
-  origin: [APP_URL, 'http://localhost:3000'],
+  origin: [
+    'https://teleprompter.producinghollywood.com',
+    'http://localhost:3000'
+  ],
   credentials: true
 }));
 app.use(express.json());
@@ -35,18 +35,14 @@ app.get('/auth/tiktok', (req, res) => {
   if (!TIKTOK_CLIENT_KEY) {
     return res.status(500).send('TikTok Client Key not configured');
   }
-
   const state = crypto.randomBytes(16).toString('hex');
-  const sessionId = req.cookies.sessionId || crypto.randomUUID();
   
-  const sessionData = sessions.get(sessionId) || {};
-  sessions.set(sessionId, { ...sessionData, state });
-
-  res.cookie('sessionId', sessionId, {
+  // Store state in a short-lived cookie — no session map needed
+  res.cookie('tiktok_oauth_state', state, {
     httpOnly: true,
     secure: true,
     sameSite: 'none',
-    maxAge: 3600000
+    maxAge: 600000 // 10 minutes
   });
 
   const params = new URLSearchParams({
@@ -54,81 +50,113 @@ app.get('/auth/tiktok', (req, res) => {
     scope: 'user.info.basic,video.upload,video.publish',
     response_type: 'code',
     redirect_uri: REDIRECT_URI,
-    state: state,
+    state,
   });
 
   res.redirect(`https://www.tiktok.com/v2/auth/authorize/?${params.toString()}`);
 });
 
 app.get('/auth/tiktok/callback', async (req, res) => {
-  const { code, state } = req.query;
-  const sessionId = req.cookies.sessionId;
+  const { code, state, error } = req.query;
 
-  if (!sessionId || !sessions.has(sessionId)) {
-    return res.status(400).send('Invalid session');
+  // User cancelled
+  if (error) {
+    return res.send(`<html><body><p style="font-family:sans-serif;padding:40px;color:#666">
+      Authorization cancelled. You can close this window.</p>
+      <script>setTimeout(()=>window.close(),2000)</script></body></html>`);
   }
 
-  const sessionData = sessions.get(sessionId);
-  if (state !== sessionData.state) {
-    return res.status(400).send('State mismatch');
+  const storedState = req.cookies.tiktok_oauth_state;
+
+  if (!state || !storedState || state !== storedState) {
+    return res.send(`<html><body><p style="font-family:sans-serif;padding:40px;color:#c00">
+      Session expired or invalid. Please close this window and try connecting again.</p>
+      <script>setTimeout(()=>window.close(),3000)</script></body></html>`);
   }
+
+  // Clear state cookie immediately
+  res.clearCookie('tiktok_oauth_state', { secure: true, sameSite: 'none' });
 
   try {
-    const tokenResponse = await axios.post('https://open.tiktokapis.com/v2/oauth/token/', 
+    const tokenResponse = await axios.post(
+      'https://open.tiktokapis.com/v2/oauth/token/',
       new URLSearchParams({
         client_key: TIKTOK_CLIENT_KEY!,
         client_secret: TIKTOK_CLIENT_SECRET!,
         code: code as string,
         grant_type: 'authorization_code',
         redirect_uri: REDIRECT_URI,
-      }), {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-      }
+      }),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
     );
 
     const { access_token, open_id } = tokenResponse.data;
-    const userResponse = await axios.get('https://open.tiktokapis.com/v2/user/info/?fields=display_name,avatar_url', {
-      headers: { 'Authorization': `Bearer ${access_token}` }
-    });
+
+    const userResponse = await axios.get(
+      'https://open.tiktokapis.com/v2/user/info/?fields=display_name,avatar_url',
+      { headers: { Authorization: `Bearer ${access_token}` } }
+    );
 
     const user = userResponse.data.data.user;
-    sessions.set(sessionId, { ...sessionData, access_token, open_id, user });
 
-    res.send(`
-      <html>
-        <body>
-          <script>
-            if (window.opener) {
-              window.opener.postMessage({ 
-                tiktokConnected: true, 
-                user: ${JSON.stringify(user)} 
-              }, '*');
-              window.close();
-            } else {
-              window.location.href = '/';
-            }
-          </script>
-          <p>Authentication successful. This window should close automatically.</p>
-        </body>
-      </html>
-    `);
-  } catch (error: any) {
-    console.error('TikTok Callback Error:', error.response?.data || error.message);
-    res.status(500).send('Failed to complete TikTok authentication');
+    // Store token and user in httpOnly cookies — persists across Cloud Run restarts
+    res.cookie('tiktok_token', access_token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 86400000
+    });
+    res.cookie('tiktok_user', JSON.stringify({
+      display_name: user.display_name,
+      avatar_url: user.avatar_url,
+      open_id
+    }), {
+      httpOnly: false, // must be readable by /api/tiktok/me
+      secure: true,
+      sameSite: 'none',
+      maxAge: 86400000
+    });
+
+    // Redirect to /auth/tiktok/success — DO NOT use postMessage here
+    // because window.opener is null after cross-origin navigation
+    res.redirect('/auth/tiktok/success');
+
+  } catch (err: any) {
+    console.error('TikTok Callback Error:', err.response?.data || err.message);
+    res.send(`<html><body><p style="font-family:sans-serif;padding:40px;color:#c00">
+      Authentication failed. Please close this window and try again.</p>
+      <script>setTimeout(()=>window.close(),3000)</script></body></html>`);
   }
 });
 
+app.get('/auth/tiktok/success', (req, res) => {
+  res.send(`
+    <html>
+      <head><title>Connected!</title></head>
+      <body style="font-family:sans-serif;text-align:center;padding:60px;background:#0a0a0a;color:#fff">
+        <h2 style="margin-bottom:8px">✓ TikTok Connected</h2>
+        <p style="color:#888;font-size:14px">This window will close automatically...</p>
+        <script>
+          // Signal the parent window that auth is complete
+          try {
+            if (window.opener) {
+              window.opener.postMessage({ tiktokConnected: true }, '*');
+            }
+          } catch(e) {}
+          // Always close after short delay regardless of opener
+          setTimeout(() => window.close(), 1500);
+        </script>
+      </body>
+    </html>
+  `);
+});
+
 app.post('/api/tiktok/post', upload.single('video'), async (req, res) => {
-  const sessionId = req.cookies.sessionId;
   const { caption } = req.body;
   const videoFile = req.file;
 
-  if (!sessionId || !sessions.has(sessionId)) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-
-  const { access_token } = sessions.get(sessionId);
-  if (!access_token) return res.status(401).json({ error: 'No access token' });
+  const access_token = req.cookies.tiktok_token;
+  if (!access_token) return res.status(401).json({ error: 'Not authenticated' });
   if (!videoFile) return res.status(400).json({ error: 'No video provided' });
 
   try {
@@ -170,18 +198,21 @@ app.post('/api/tiktok/post', upload.single('video'), async (req, res) => {
 });
 
 app.get('/api/tiktok/me', (req, res) => {
-  const sessionId = req.cookies.sessionId;
-  if (!sessionId || !sessions.has(sessionId)) {
-    return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    const userCookie = req.cookies.tiktok_user;
+    if (!userCookie) return res.status(401).json({ error: 'Not connected' });
+    const user = JSON.parse(userCookie);
+    return res.json({ user });
+  } catch {
+    return res.status(401).json({ error: 'Not connected' });
   }
-  const { user } = sessions.get(sessionId);
-  res.json({ user });
 });
 
 app.post('/api/auth/logout', (req, res) => {
-  const sessionId = req.cookies.sessionId;
-  if (sessionId) sessions.delete(sessionId);
-  res.clearCookie('sessionId');
+  const cookieOpts = { secure: true, sameSite: 'none' as const };
+  res.clearCookie('tiktok_token', cookieOpts);
+  res.clearCookie('tiktok_user', cookieOpts);
+  res.clearCookie('tiktok_oauth_state', cookieOpts);
   res.json({ success: true });
 });
 

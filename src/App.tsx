@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { CameraPreview } from './components/CameraPreview';
 import { Teleprompter } from './components/Teleprompter';
 import { generateIndustryScript, type GeneratedContent } from './services/geminiService';
@@ -14,8 +14,6 @@ import {
   Play, 
   Square, 
   Download, 
-  Type, 
-  Mic, 
   Zap, 
   ChevronRight,
   Video,
@@ -27,7 +25,6 @@ import {
   RefreshCw,
   Share2,
   LogOut,
-  User,
   CheckCircle2,
   XCircle,
   AlertCircle,
@@ -60,7 +57,7 @@ export default function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [isLive, setIsLive] = useState(false);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
-  
+
   const [fontSize, setFontSize] = useState(32);
   const [scrollSpeed, setScrollSpeed] = useState(20);
   const [opacity, setOpacity] = useState(40);
@@ -73,8 +70,12 @@ export default function App() {
   });
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
   const [tiktokUser, setTiktokUser] = useState<any>(null);
+  const [tiktokLoading, setTiktokLoading] = useState(true);
   const [isPosting, setIsPosting] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
+
+  // Ref to abort the retry loop if the component unmounts
+  const fetchAbortedRef = useRef(false);
 
   const effectiveCaption = caption.trim() || script.slice(0, 150);
 
@@ -92,33 +93,46 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         if (data.user) {
-          setTiktokUser(data.user);
+          if (!fetchAbortedRef.current) setTiktokUser(data.user);
           return data.user;
         }
       }
-      setTiktokUser(null);
+      if (!fetchAbortedRef.current) setTiktokUser(null);
       return null;
     } catch (e) {
-      setTiktokUser(null);
+      if (!fetchAbortedRef.current) setTiktokUser(null);
       return null;
     }
   };
 
   useEffect(() => {
+    fetchAbortedRef.current = false;
     const params = new URLSearchParams(window.location.search);
     const justConnected = params.get('tiktok') === 'connected';
+
     if (justConnected) {
       window.history.replaceState({}, '', '/');
       let attempts = 0;
       const tryFetch = async () => {
+        if (fetchAbortedRef.current) return;
         attempts++;
         const user = await fetchTikTokUser();
-        if (!user && attempts < 5) setTimeout(tryFetch, 800);
+        if (!user && attempts < 5 && !fetchAbortedRef.current) {
+          setTimeout(tryFetch, 800);
+        } else {
+          if (!fetchAbortedRef.current) setTiktokLoading(false);
+        }
       };
       setTimeout(tryFetch, 500);
     } else {
-      fetchTikTokUser();
+      fetchTikTokUser().finally(() => {
+        if (!fetchAbortedRef.current) setTiktokLoading(false);
+      });
     }
+
+    return () => {
+      fetchAbortedRef.current = true;
+    };
   }, []);
 
   const handleTikTokConnect = () => {
@@ -149,7 +163,13 @@ export default function App() {
         setRecordedBlob(null);
       } else {
         const err = await res.json();
-        showToast('error', `Failed to post: ${err.error}`);
+        // If token expired and refresh failed, prompt reconnect
+        if (res.status === 401) {
+          setTiktokUser(null);
+          showToast('error', 'TikTok session expired. Please reconnect your account.');
+        } else {
+          showToast('error', `Failed to post: ${err.error}`);
+        }
       }
     } catch (e) {
       showToast('error', 'Failed to post to TikTok. Check your connection and try again.');
@@ -216,7 +236,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-zinc-100 font-sans selection:bg-zinc-700">
       <div className="max-w-7xl mx-auto h-screen flex flex-col md:flex-row overflow-hidden">
-        
+
         {/* Left Sidebar */}
         <div className="w-full md:w-[400px] bg-[#111111] border-r border-zinc-800 flex flex-col h-full">
           <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
@@ -257,13 +277,13 @@ export default function App() {
                     <div className="space-y-2">
                       <Label className="text-xs uppercase tracking-widest text-zinc-400">AI Topic (Optional)</Label>
                       <div className="flex gap-2">
-                        <Textarea 
+                        <Textarea
                           value={aiTopic}
                           onChange={(e) => setAiTopic(e.target.value)}
                           placeholder="e.g. The future of Netflix, Coachella concert films, Reality TV fatigue..."
                           className="min-h-[60px] bg-zinc-900 border-zinc-800 focus:border-zinc-600 transition-colors resize-none text-sm"
                         />
-                        <Button 
+                        <Button
                           onClick={handleGenerateAIScript}
                           disabled={isGenerating}
                           title="Generate AI script"
@@ -277,7 +297,7 @@ export default function App() {
 
                     <div className="space-y-2">
                       <Label className="text-xs uppercase tracking-widest text-zinc-400">Your Script</Label>
-                      <Textarea 
+                      <Textarea
                         value={script}
                         onChange={(e) => setScript(e.target.value)}
                         placeholder="Paste your text here..."
@@ -291,9 +311,9 @@ export default function App() {
                           TikTok Caption
                           {!caption.trim() && <span className="ml-2 text-zinc-600 normal-case">(auto from script)</span>}
                         </Label>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={copyCaption}
                           className="h-6 text-[10px] gap-1 text-zinc-400 hover:text-white"
                         >
@@ -332,17 +352,17 @@ export default function App() {
                               <p className="text-xs text-zinc-300 line-clamp-2 italic">"{item.script.slice(0, 60)}..."</p>
                             </div>
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
+                              <Button
+                                variant="ghost"
+                                size="sm"
                                 onClick={() => { setScript(item.script); setCaption(item.caption); showToast('info', 'Script loaded from history'); }}
                                 className="h-7 w-7 p-0 text-zinc-500 hover:text-white"
                               >
                                 <RefreshCw className="w-3 h-3" />
                               </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
+                              <Button
+                                variant="ghost"
+                                size="sm"
                                 onClick={() => deleteHistoryItem(item.id)}
                                 className="h-7 w-7 p-0 text-zinc-500 hover:text-red-500"
                               >
@@ -363,9 +383,9 @@ export default function App() {
                         <Label className="text-xs uppercase tracking-widest text-zinc-400">Font Size</Label>
                         <span className="text-xs font-mono text-zinc-400">{fontSize}px</span>
                       </div>
-                      <Slider 
-                        value={[fontSize]} 
-                        onValueChange={(v) => setFontSize(v[0])} 
+                      <Slider
+                        value={[fontSize]}
+                        onValueChange={(v) => setFontSize(v[0])}
                         min={16} max={80} step={1}
                         className="py-4"
                       />
@@ -376,9 +396,9 @@ export default function App() {
                         <Label className="text-xs uppercase tracking-widest text-zinc-400">Background Opacity</Label>
                         <span className="text-xs font-mono text-zinc-400">{opacity}%</span>
                       </div>
-                      <Slider 
-                        value={[opacity]} 
-                        onValueChange={(v) => setOpacity(v[0])} 
+                      <Slider
+                        value={[opacity]}
+                        onValueChange={(v) => setOpacity(v[0])}
                         min={0} max={100} step={1}
                         className="py-4"
                       />
@@ -389,9 +409,9 @@ export default function App() {
                         <Label className="text-sm font-medium">Voice Sync</Label>
                         <p className="text-[10px] text-zinc-400 uppercase tracking-wider">Auto-scroll as you speak</p>
                       </div>
-                      <Switch 
-                        checked={isVoiceActive} 
-                        onCheckedChange={setIsVoiceActive} 
+                      <Switch
+                        checked={isVoiceActive}
+                        onCheckedChange={setIsVoiceActive}
                       />
                     </div>
                   </div>
@@ -399,12 +419,17 @@ export default function App() {
 
                 <TabsContent value="tiktok" className="mt-6 space-y-6">
                   <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl text-center space-y-6">
-                    {tiktokUser ? (
+                    {tiktokLoading ? (
+                      <div className="flex flex-col items-center gap-3 py-4">
+                        <RefreshCw className="w-6 h-6 text-zinc-600 animate-spin" />
+                        <p className="text-xs text-zinc-600 uppercase tracking-widest">Checking connection...</p>
+                      </div>
+                    ) : tiktokUser ? (
                       <>
                         <div className="flex flex-col items-center gap-4">
-                          <img 
-                            src={tiktokUser.avatar_url} 
-                            alt={tiktokUser.display_name} 
+                          <img
+                            src={tiktokUser.avatar_url}
+                            alt={tiktokUser.display_name}
                             className="w-20 h-20 rounded-full border-4 border-zinc-800 shadow-xl"
                             referrerPolicy="no-referrer"
                           />
@@ -413,8 +438,8 @@ export default function App() {
                             <p className="text-xs text-zinc-500 uppercase tracking-widest">Connected to TikTok</p>
                           </div>
                         </div>
-                        <Button 
-                          variant="outline" 
+                        <Button
+                          variant="outline"
                           onClick={handleTikTokLogout}
                           className="w-full border-zinc-800 hover:bg-zinc-800 gap-2"
                         >
@@ -448,26 +473,26 @@ export default function App() {
 
           <div className="p-6 border-t border-zinc-800 bg-zinc-900/50">
             {!isLive ? (
-              <Button 
-                onClick={() => setIsLive(true)} 
+              <Button
+                onClick={() => setIsLive(true)}
                 className="w-full h-14 bg-zinc-100 text-black hover:bg-white rounded-xl font-bold text-lg shadow-xl shadow-white/5"
               >
                 Start Session
               </Button>
             ) : (
               <div className="grid grid-cols-2 gap-3">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   onClick={() => setIsLive(false)}
                   className="h-14 border-zinc-800 hover:bg-zinc-800 rounded-xl font-bold text-black"
                 >
                   Exit
                 </Button>
-                <Button 
+                <Button
                   onClick={() => setIsRecording(!isRecording)}
                   className={`h-14 rounded-xl font-bold text-lg shadow-lg ${
-                    isRecording 
-                      ? 'bg-red-600 hover:bg-red-700 text-white shadow-red-900/20' 
+                    isRecording
+                      ? 'bg-red-600 hover:bg-red-700 text-white shadow-red-900/20'
                       : 'bg-zinc-100 text-black hover:bg-white shadow-white/5'
                   }`}
                 >
@@ -482,13 +507,13 @@ export default function App() {
         {/* Main Preview Area */}
         <div className="flex-1 relative bg-black flex items-center justify-center p-4 md:p-12 overflow-hidden">
           <div className="aspect-[9/16] h-full max-h-[90vh] relative group">
-            <CameraPreview 
-              isRecording={isRecording} 
-              onRecordingComplete={handleRecordingComplete} 
+            <CameraPreview
+              isRecording={isRecording}
+              onRecordingComplete={handleRecordingComplete}
             />
-            
+
             {isLive && (
-              <Teleprompter 
+              <Teleprompter
                 text={script}
                 fontSize={fontSize}
                 scrollSpeed={scrollSpeed}
@@ -500,7 +525,7 @@ export default function App() {
 
             <AnimatePresence>
               {!isLive && (
-                <motion.div 
+                <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
@@ -513,7 +538,7 @@ export default function App() {
                   <p className="text-zinc-400 text-sm leading-relaxed mb-8 max-w-[240px]">
                     Configure your script and style on the left, then hit Start Session to begin.
                   </p>
-                  <Button 
+                  <Button
                     onClick={() => setIsLive(true)}
                     className="bg-white text-black hover:bg-zinc-200 h-12 px-8 rounded-full font-bold"
                   >
@@ -527,7 +552,7 @@ export default function App() {
           {/* Recording ready toast */}
           <AnimatePresence>
             {recordedBlob && !isRecording && (
-              <motion.div 
+              <motion.div
                 initial={{ y: 100, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: 100, opacity: 0 }}
@@ -549,9 +574,9 @@ export default function App() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setRecordedBlob(null)}
                     disabled={isPosting}
                     className="text-zinc-500 hover:text-zinc-100 flex-1"
@@ -559,8 +584,8 @@ export default function App() {
                     Discard
                   </Button>
                   {tiktokUser ? (
-                    <Button 
-                      size="sm" 
+                    <Button
+                      size="sm"
                       onClick={handlePostToTikTok}
                       disabled={isPosting}
                       className="bg-[#fe2c55] text-white hover:bg-[#ef2950] font-bold shadow-lg shadow-red-500/20 flex-1"
@@ -569,8 +594,8 @@ export default function App() {
                       {isPosting ? 'Posting...' : 'Post to TikTok'}
                     </Button>
                   ) : (
-                    <Button 
-                      size="sm" 
+                    <Button
+                      size="sm"
                       onClick={downloadVideo}
                       className="bg-zinc-100 text-black hover:bg-white font-bold flex-1"
                     >

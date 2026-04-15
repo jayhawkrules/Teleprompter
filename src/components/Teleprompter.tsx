@@ -25,6 +25,12 @@ export function Teleprompter({
   const [currentWordIndex, setCurrentWordIndex] = useState(-1);
   const words = text.split(/\s+/);
   
+  const currentWordIndexRef = useRef(currentWordIndex);
+  useEffect(() => { currentWordIndexRef.current = currentWordIndex; }, [currentWordIndex]);
+
+  const wordsRef = useRef(words);
+  useEffect(() => { wordsRef.current = words; }, [words]);
+
   // Speech Recognition setup
   useEffect(() => {
     if (!isVoiceActive) return;
@@ -47,7 +53,7 @@ export function Teleprompter({
       // Try to find the spoken words in our text
       const spokenWords = transcript.split(/\s+/);
       spokenWords.forEach((word: string) => {
-        const index = words.findIndex((w, i) => i > currentWordIndex && w.toLowerCase().includes(word));
+        const index = wordsRef.current.findIndex((w, i) => i > currentWordIndexRef.current && w.toLowerCase().includes(word));
         if (index !== -1) {
           setCurrentWordIndex(index);
         }
@@ -56,7 +62,7 @@ export function Teleprompter({
 
     recognition.start();
     return () => recognition.stop();
-  }, [isVoiceActive, words, currentWordIndex]);
+  }, [isVoiceActive]);
 
   // Auto-scroll logic
   useEffect(() => {

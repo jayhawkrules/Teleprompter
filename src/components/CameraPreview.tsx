@@ -96,7 +96,6 @@ export function CameraPreview({ isRecording, onRecordingComplete }: CameraPrevie
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        setIsCameraActive(true);
         setError(null);
         getDevices();
       }
@@ -112,7 +111,6 @@ export function CameraPreview({ isRecording, onRecordingComplete }: CameraPrevie
           });
           if (videoRef.current) {
             videoRef.current.srcObject = videoOnlyStream;
-            setIsCameraActive(true);
             setError("Microphone access was denied. Recording will have no audio.");
             return;
           }
@@ -128,7 +126,6 @@ export function CameraPreview({ isRecording, onRecordingComplete }: CameraPrevie
           const basicStream = await navigator.mediaDevices.getUserMedia({ video: true });
           if (videoRef.current) {
             videoRef.current.srcObject = basicStream;
-            setIsCameraActive(true);
             setError("Running in limited mode (Video only).");
             return;
           }
@@ -157,8 +154,8 @@ export function CameraPreview({ isRecording, onRecordingComplete }: CameraPrevie
   };
 
   useEffect(() => {
-    // We'll try to auto-start, but if it fails, we show the manual button
-    setupCamera();
+    // We'll only check permissions and get devices on mount
+    // setupCamera() is now called by user gesture (Start Camera button)
     checkPermissions();
     getDevices();
 
@@ -181,10 +178,19 @@ export function CameraPreview({ isRecording, onRecordingComplete }: CameraPrevie
   const startRecording = () => {
     if (!videoRef.current?.srcObject) return;
     
+    const getSupportedMimeType = () => {
+      const types = [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm',
+        'video/mp4',
+      ];
+      return types.find(type => MediaRecorder.isTypeSupported(type)) || '';
+    };
+
     const stream = videoRef.current.srcObject as MediaStream;
-    const mediaRecorder = new MediaRecorder(stream, {
-      mimeType: 'video/webm;codecs=vp9,opus'
-    });
+    const mimeType = getSupportedMimeType();
+    const mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
 
     mediaRecorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
@@ -213,6 +219,7 @@ export function CameraPreview({ isRecording, onRecordingComplete }: CameraPrevie
         autoPlay
         muted
         playsInline
+        onCanPlay={() => setIsCameraActive(true)}
         className="w-full h-full object-cover mirror"
         style={{ transform: 'scaleX(-1)' }}
       />
@@ -281,7 +288,7 @@ export function CameraPreview({ isRecording, onRecordingComplete }: CameraPrevie
                 Refresh
               </Button>
               <Button 
-                onClick={setupCamera}
+                onClick={() => setupCamera()}
                 className="flex-1 bg-white text-black hover:bg-zinc-200 h-11 rounded-full font-bold shadow-xl shadow-white/10"
               >
                 Try Again

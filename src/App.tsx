@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { CameraPreview } from './components/CameraPreview';
 import { Teleprompter } from './components/Teleprompter';
 import { generateIndustryScript, type GeneratedContent } from './services/geminiService';
@@ -24,7 +24,10 @@ import {
   Copy,
   Check,
   Trash2,
-  RefreshCw
+  RefreshCw,
+  Share2,
+  LogOut,
+  User
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -33,6 +36,13 @@ interface HistoryItem extends GeneratedContent {
   timestamp: number;
   topic?: string;
 }
+
+const safeGetStorage = (key: string) => {
+  try { return localStorage.getItem(key); } catch { return null; }
+};
+const safeSetStorage = (key: string, value: string) => {
+  try { localStorage.setItem(key, value); } catch { /* silently ignore */ }
+};
 
 export default function App() {
   const [script, setScript] = useState("Welcome to TeleVibe! Paste your script here. This app will track your voice and scroll automatically as you speak. Perfect for TikTok, Reels, and YouTube Shorts. Try it out now!");
@@ -49,10 +59,74 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiTopic, setAiTopic] = useState("");
   const [history, setHistory] = useState<HistoryItem[]>(() => {
-    const saved = localStorage.getItem('televibe_history');
+    const saved = safeGetStorage('televibe_history');
     return saved ? JSON.parse(saved) : [];
   });
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
+  const [tiktokUser, setTiktokUser] = useState<any>(null);
+  const [isPosting, setIsPosting] = useState(false);
+
+  const fetchTikTokUser = async () => {
+    try {
+      const res = await fetch('/api/tiktok/me');
+      if (res.ok) {
+        const data = await res.json();
+        setTiktokUser(data.user);
+      } else {
+        setTiktokUser(null);
+      }
+    } catch (e) {
+      setTiktokUser(null);
+    }
+  };
+
+  useEffect(() => {
+    fetchTikTokUser();
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.tiktokConnected) {
+        setTiktokUser(event.data.user);
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  const handleTikTokConnect = async () => {
+    window.open('/auth/tiktok', 'tiktok_auth', 'width=600,height=700');
+  };
+
+  const handleTikTokLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    setTiktokUser(null);
+  };
+
+  const handlePostToTikTok = async () => {
+    if (!recordedBlob) return;
+    setIsPosting(true);
+    try {
+      const formData = new FormData();
+      formData.append('video', recordedBlob, 'video.webm');
+      formData.append('caption', caption || script.slice(0, 100));
+
+      const res = await fetch('/api/tiktok/post', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (res.ok) {
+        alert('Successfully posted to TikTok!');
+        setRecordedBlob(null);
+      } else {
+        const err = await res.json();
+        alert(`Failed to post: ${err.error}`);
+      }
+    } catch (e) {
+      alert('Failed to post to TikTok');
+    } finally {
+      setIsPosting(false);
+    }
+  };
 
   const saveToHistory = (content: GeneratedContent, topic?: string) => {
     const newItem: HistoryItem = {
@@ -63,13 +137,13 @@ export default function App() {
     };
     const newHistory = [newItem, ...history].slice(0, 20); // Keep last 20
     setHistory(newHistory);
-    localStorage.setItem('televibe_history', JSON.stringify(newHistory));
+    safeSetStorage('televibe_history', JSON.stringify(newHistory));
   };
 
   const deleteHistoryItem = (id: string) => {
     const newHistory = history.filter(item => item.id !== id);
     setHistory(newHistory);
-    localStorage.setItem('televibe_history', JSON.stringify(newHistory));
+    safeSetStorage('televibe_history', JSON.stringify(newHistory));
   };
 
   const handleGenerateAIScript = async () => {
@@ -140,6 +214,9 @@ export default function App() {
                   </TabsTrigger>
                   <TabsTrigger value="settings" className="flex-1 gap-2 text-zinc-400 data-[state=active]:text-zinc-100">
                     <Settings className="w-4 h-4" /> Style
+                  </TabsTrigger>
+                  <TabsTrigger value="tiktok" className="flex-1 gap-2 text-zinc-400 data-[state=active]:text-zinc-100">
+                    <Share2 className="w-4 h-4" /> TikTok
                   </TabsTrigger>
                 </TabsList>
 
@@ -282,6 +359,52 @@ export default function App() {
                     </div>
                   </div>
                 </TabsContent>
+
+                <TabsContent value="tiktok" className="mt-6 space-y-6">
+                  <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl text-center space-y-6">
+                    {tiktokUser ? (
+                      <>
+                        <div className="flex flex-col items-center gap-4">
+                          <img 
+                            src={tiktokUser.avatar_url} 
+                            alt={tiktokUser.display_name} 
+                            className="w-20 h-20 rounded-full border-4 border-zinc-800 shadow-xl"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div>
+                            <h3 className="font-bold text-lg">{tiktokUser.display_name}</h3>
+                            <p className="text-xs text-zinc-500 uppercase tracking-widest">Connected to TikTok</p>
+                          </div>
+                        </div>
+                        <Button 
+                          variant="outline" 
+                          onClick={handleTikTokLogout}
+                          className="w-full border-zinc-800 hover:bg-zinc-800 gap-2"
+                        >
+                          <LogOut className="w-4 h-4" /> Disconnect
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-16 h-16 bg-zinc-800 rounded-2xl flex items-center justify-center mx-auto mb-2">
+                          <Share2 className="w-8 h-8 text-zinc-500" />
+                        </div>
+                        <div className="space-y-2">
+                          <h3 className="font-bold text-lg">Connect TikTok</h3>
+                          <p className="text-sm text-zinc-500 leading-relaxed">
+                            Link your account to post your recordings directly to TikTok with one click.
+                          </p>
+                        </div>
+                        <Button 
+                          onClick={handleTikTokConnect}
+                          className="w-full bg-white text-black hover:bg-zinc-200 font-bold h-12 rounded-xl"
+                        >
+                          Connect Account
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </TabsContent>
               </Tabs>
             </div>
           </ScrollArea>
@@ -388,17 +511,30 @@ export default function App() {
                     variant="ghost" 
                     size="sm" 
                     onClick={() => setRecordedBlob(null)}
+                    disabled={isPosting}
                     className="text-zinc-500 hover:text-zinc-100"
                   >
                     Discard
                   </Button>
-                  <Button 
-                    size="sm" 
-                    onClick={downloadVideo}
-                    className="bg-zinc-100 text-black hover:bg-white font-bold"
-                  >
-                    <Download className="w-4 h-4 mr-2" /> Save to Device
-                  </Button>
+                  {tiktokUser ? (
+                    <Button 
+                      size="sm" 
+                      onClick={handlePostToTikTok}
+                      disabled={isPosting}
+                      className="bg-[#fe2c55] text-white hover:bg-[#ef2950] font-bold shadow-lg shadow-red-500/20"
+                    >
+                      {isPosting ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Share2 className="w-4 h-4 mr-2" />}
+                      {isPosting ? 'Posting...' : 'Post to TikTok'}
+                    </Button>
+                  ) : (
+                    <Button 
+                      size="sm" 
+                      onClick={downloadVideo}
+                      className="bg-zinc-100 text-black hover:bg-white font-bold"
+                    >
+                      <Download className="w-4 h-4 mr-2" /> Save to Device
+                    </Button>
+                  )}
                 </div>
               </motion.div>
             )}

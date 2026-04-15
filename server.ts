@@ -18,9 +18,10 @@ const upload = multer({ storage: multer.memoryStorage() });
 const sessions = new Map<string, any>();
 
 const APP_URL = process.env.APP_URL || `http://localhost:${PORT}`;
+const TIKTOK_REDIRECT_URI = process.env.TIKTOK_REDIRECT_URI || 'https://teleprompter.producinghollywood.com/auth/tiktok/callback';
 const TIKTOK_CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY;
 const TIKTOK_CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET;
-const REDIRECT_URI = `${APP_URL}/auth/tiktok/callback`;
+const REDIRECT_URI = TIKTOK_REDIRECT_URI;
 
 app.use(cors({
   origin: [APP_URL, 'http://localhost:3000'],

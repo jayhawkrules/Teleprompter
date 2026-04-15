@@ -75,7 +75,7 @@ app.get('/auth/tiktok', (req, res) => {
     scope: 'user.info.basic,video.upload,video.publish',
     response_type: 'code',
     redirect_uri: TIKTOK_REDIRECT_URI,
-    state: 'televibe',
+    state: 'televibe_' + crypto.randomBytes(20).toString('hex'),
   });
 
   // On mobile, use the web-specific auth URL that stays in browser

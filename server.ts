@@ -116,7 +116,7 @@ Return ONLY a JSON object with "script" and "caption" fields. No markdown, no ex
   try {
     console.log('[Gemini] Generating script for topic:', topic || 'general industry trends');
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.0-flash-lite',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',

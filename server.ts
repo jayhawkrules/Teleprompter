@@ -21,42 +21,35 @@ const TIKTOK_CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET;
 const REDIRECT_URI = TIKTOK_REDIRECT_URI;
 const STATE_SECRET = process.env.SESSION_SECRET || 'televibe-state-secret-2024';
 
-// State format: {16-char random}{8-char timestamp base36}{16-char hmac}
-// All concatenated with NO separators — fixed-length fields only
 const createSignedState = (): string => {
-  const random = crypto.randomBytes(8).toString('hex');       // 16 chars
-  const timestamp = Date.now().toString(36).padStart(8, '0'); // 8 chars  
-  const payload = random + timestamp;                          // 24 chars
+  // 20 bytes = 40 hex chars for random
+  const random = crypto.randomBytes(20).toString('hex');      // 40 chars
+  const timestamp = Date.now().toString(36).padStart(9, '0'); // 9 chars
+  const payload = random + timestamp;                          // 49 chars
   const sig = crypto.createHmac('sha256', STATE_SECRET)
     .update(payload)
     .digest('hex')
-    .substring(0, 16);                                         // 16 chars
-  return payload + sig;                                        // 40 chars total, all hex/alphanumeric
+    .substring(0, 20);                                         // 20 chars
+  return payload + sig;                                        // 69 chars total — safely within 43-128
 };
 
 const verifySignedState = (state: string): boolean => {
   try {
-    if (!state || state.length !== 40) return false;
-    
-    const random = state.substring(0, 16);
-    const timestamp = state.substring(16, 24);
-    const sig = state.substring(24, 40);
-    
-    // Check expiry — reject if older than 10 minutes
+    if (!state || state.length !== 69) return false;
+    const random    = state.substring(0, 40);
+    const timestamp = state.substring(40, 49);
+    const sig       = state.substring(49, 69);
     const createdAt = parseInt(timestamp, 36);
     if (isNaN(createdAt)) return false;
-    if (Date.now() - createdAt > 600000) return false;
-    
-    const payload = random + timestamp;
+    if (Date.now() - createdAt > 600000) return false; // 10 min expiry
+    const payload  = random + timestamp;
     const expected = crypto.createHmac('sha256', STATE_SECRET)
       .update(payload)
       .digest('hex')
-      .substring(0, 16);
-    
-    // Safe string comparison without timingSafeEqual buffer length issues
+      .substring(0, 20);
     if (sig.length !== expected.length) return false;
     return crypto.timingSafeEqual(
-      Buffer.from(sig, 'hex'),
+      Buffer.from(sig,      'hex'),
       Buffer.from(expected, 'hex')
     );
   } catch {
@@ -96,6 +89,12 @@ app.get('/auth/tiktok', (req, res) => {
 
 app.get('/auth/tiktok/callback', async (req, res) => {
   const { code, state, error } = req.query;
+  
+  // DEBUG — remove after confirming auth works
+  console.log('[TikTok Callback] state received:', state);
+  console.log('[TikTok Callback] state length:', state ? (state as string).length : 0);
+  console.log('[TikTok Callback] code present:', !!code);
+  console.log('[TikTok Callback] error:', error || 'none');
 
   if (error) {
     return res.send(`

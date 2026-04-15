@@ -88,9 +88,10 @@ export default function App() {
   useEffect(() => {
     fetchTikTokUser();
 
-    const handleMessage = (event: MessageEvent) => {
+    const handleMessage = async (event: MessageEvent) => {
       if (event.data?.tiktokConnected) {
-        setTiktokUser(event.data.user);
+        // user data is in the cookie — fetch it from the server
+        await fetchTikTokUser();
       }
     };
     window.addEventListener('message', handleMessage);
@@ -98,7 +99,6 @@ export default function App() {
   }, []);
 
   const handleTikTokConnect = () => {
-    // Try popup first (desktop)
     let popup: Window | null = null;
     try {
       popup = window.open(
@@ -109,22 +109,21 @@ export default function App() {
     } catch(e) {}
 
     if (popup && !popup.closed) {
-      // Popup worked — poll until it closes then refresh user state
-      const pollInterval = setInterval(async () => {
+      // Desktop: popup opened — poll until closed then refresh
+      const poll = setInterval(async () => {
         if (!popup || popup.closed) {
-          clearInterval(pollInterval);
+          clearInterval(poll);
+          setIsTikTokLoading(false);
           await fetchTikTokUser();
         }
       }, 1000);
-      setTimeout(() => clearInterval(pollInterval), 300000);
+      setTimeout(() => clearInterval(poll), 300000);
       return;
     }
 
-    // Popup blocked (mobile) — use same-tab redirect
+    // Mobile fallback: same-tab redirect
     setIsTikTokLoading(true);
-    try {
-      sessionStorage.setItem('tiktok_return', window.location.href);
-    } catch(e) {}
+    try { sessionStorage.setItem('tiktok_return', window.location.href); } catch(e) {}
     window.location.href = '/auth/tiktok';
   };
 
@@ -428,16 +427,15 @@ export default function App() {
                             Link your account to post your recordings directly to TikTok with one click.
                           </p>
                         </div>
-                        <Button 
+                        <Button
                           onClick={handleTikTokConnect}
                           disabled={isTikTokLoading}
-                          className="w-full bg-white text-black hover:bg-zinc-200 font-bold h-12 rounded-xl"
+                          className="w-full bg-white text-black hover:bg-zinc-200 font-bold h-12 rounded-xl disabled:opacity-60"
                         >
-                          {isTikTokLoading ? (
-                            <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Connecting...</>
-                          ) : (
-                            'Connect Account'
-                          )}
+                          {isTikTokLoading
+                            ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Connecting...</>
+                            : 'Connect Account'
+                          }
                         </Button>
                       </>
                     )}

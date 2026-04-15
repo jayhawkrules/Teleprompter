@@ -1,39 +1,27 @@
 import express from 'express';
-import session from 'express-session';
 import path from 'path';
 import axios from 'axios';
-import cookieParser from 'cookie-parser';
 import multer from 'multer';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import crypto from 'crypto';
+import { GoogleGenAI, Type } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
 
 dotenv.config();
-
-declare module 'express-session' {
-  interface SessionData {
-    tiktokState?: string;
-    tiktokToken?: string;
-    tiktokUser?: {
-      display_name: string;
-      avatar_url: string;
-      open_id: string;
-    };
-  }
-}
 
 const app = express();
 const PORT = 3000;
 const upload = multer({ storage: multer.memoryStorage() });
 
-const TIKTOK_REDIRECT_URI = process.env.TIKTOK_REDIRECT_URI || 
+const TIKTOK_REDIRECT_URI = process.env.TIKTOK_REDIRECT_URI ||
   'https://teleprompter.producinghollywood.com/auth/tiktok/callback';
 const TIKTOK_CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY;
 const TIKTOK_CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET;
-const SESSION_SECRET = process.env.SESSION_SECRET || 'televibe-session-secret-change-me';
+const SESSION_SECRET = process.env.SESSION_SECRET || 'televibe-secret-change-me-in-production';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// Trust reverse proxy (CRITICAL for secure cookies behind nginx/caddy)
+// Trust reverse proxy (CRITICAL for secure cookies behind nginx/caddy/render)
 app.set('trust proxy', 1);
 
 app.use(cors({
@@ -45,20 +33,120 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// ─── Cookie-based session (no memory store — survives server restarts) ────────
+// We store TikTok data in a signed, httpOnly cookie directly.
+// This is simpler and more reliable than express-session on Render
+// because Render's ephemeral filesystem wipes any file-based stores,
+// and the default MemoryStore is cleared on every restart.
+
+const COOKIE_NAME = 'televibe_session';
+
+function signData(data: object): string {
+  const payload = Buffer.from(JSON.stringify(data)).toString('base64');
+  const sig = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('hex');
+  return `${payload}.${sig}`;
+}
+
+function verifyData(signed: string): object | null {
+  try {
+    const [payload, sig] = signed.split('.');
+    const expected = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('hex');
+    if (sig !== expected) return null;
+    return JSON.parse(Buffer.from(payload, 'base64').toString());
+  } catch {
+    return null;
+  }
+}
+
+function getSession(req: express.Request): Record<string, any> {
+  const raw = req.cookies?.[COOKIE_NAME];
+  if (!raw) return {};
+  return (verifyData(raw) as Record<string, any>) || {};
+}
+
+function setSession(res: express.Response, data: Record<string, any>) {
+  const signed = signData(data);
+  const isProduction = process.env.NODE_ENV === 'production';
+  res.cookie(COOKIE_NAME, signed, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    path: '/'
+  });
+}
+
+function clearSession(res: express.Response) {
+  res.clearCookie(COOKIE_NAME, { path: '/' });
+}
+
+// Need cookie-parser for reading cookies
+import cookieParser from 'cookie-parser';
 app.use(cookieParser());
 
-// Server-side session — stores state on the SERVER, not in the URL
-app.use(session({
-  secret: SESSION_SECRET,
-  resave: false,
-  saveUninitialized: true,
-  cookie: {
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    maxAge: 24 * 60 * 60 * 1000,  // 24 hours
-    httpOnly: true
+// ─── AI Script Generation (Server-Side) ─────────────────────────────────────
+
+app.post('/api/generate-script', async (req, res) => {
+  if (!GEMINI_API_KEY) {
+    console.error('[Gemini] GEMINI_API_KEY not set in environment variables');
+    return res.status(500).json({ error: 'AI service not configured. Please add GEMINI_API_KEY to Render environment variables.' });
   }
-}));
+
+  const { topic } = req.body;
+  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+
+  const topicContext = topic
+    ? `Specifically focus on this topic: "${topic}". Research the latest news, trends, and industry sentiment regarding this.`
+    : `Search the current television industry trends, specifically focusing on music documentaries, concert films, and reality TV.`;
+
+  const prompt = `
+    ${topicContext}
+
+    Find out what is currently trending and what is in the "ethos" that excites both industry professionals and fans.
+    Include a mix of fun insights and hard truths about where the industry is heading.
+
+    Based on this research:
+    1. Write a 30-60 second teleprompter script for a vertical video (TikTok/Reels style).
+       The tone must be extremely conversational, relatable, and authentic — like you're just talking out loud to a friend or your followers.
+       Avoid a "news anchor," "punchy broadcast," or "corporate" voice.
+       Use natural phrasing, casual transitions (e.g., "So, I was just thinking...", "Honestly, it's kind of wild that..."), and keep it grounded.
+       It should feel like a real person sharing a genuine thought or a "hot take" in a relaxed way, not a scripted news update.
+    2. Write a catchy TikTok caption for this video, including relevant hashtags.
+
+    Return the result as a JSON object with "script" and "caption" fields.
+  `;
+
+  try {
+    console.log('[Gemini] Generating script for topic:', topic || 'general industry trends');
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: prompt,
+      config: {
+        tools: [{ googleSearch: {} }],
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            script: { type: Type.STRING },
+            caption: { type: Type.STRING },
+          },
+          required: ['script', 'caption'],
+        },
+      },
+    });
+
+    const result = JSON.parse(response.text || '{}');
+    console.log('[Gemini] Script generated successfully');
+    res.json({
+      script: result.script || 'Failed to generate script.',
+      caption: result.caption || 'Failed to generate caption.',
+    });
+  } catch (error: any) {
+    console.error('[Gemini] Error:', error.message || error);
+    res.status(500).json({ error: 'Failed to generate script: ' + (error.message || 'Unknown error') });
+  }
+});
 
 // ─── TikTok Auth Routes ──────────────────────────────────────────────────────
 
@@ -78,17 +166,12 @@ app.get('/auth/tiktok', (req, res) => {
     state: 'televibe_' + crypto.randomBytes(20).toString('hex'),
   });
 
-  // On mobile, use the web-specific auth URL that stays in browser
-  // instead of triggering the universal link to the TikTok app
-  const baseUrl = 'https://www.tiktok.com/v2/auth/authorize/';
-
-  // Add disable_auto_login=1 to prevent app redirect on mobile
   if (isMobile) {
     params.append('disable_auto_login', '1');
   }
 
-  const authUrl = `${baseUrl}?${params.toString()}`;
-  console.log('[TikTok Auth] isMobile:', isMobile, '| Redirecting to:', authUrl);
+  const authUrl = `https://www.tiktok.com/v2/auth/authorize/?${params.toString()}`;
+  console.log('[TikTok Auth] isMobile:', isMobile, '| URL:', authUrl);
   res.redirect(authUrl);
 });
 
@@ -98,14 +181,12 @@ app.get('/auth/tiktok/callback', async (req, res) => {
   console.log('[TikTok Callback]', {
     hasCode: !!code,
     error: error || 'none',
-    sessionID: req.sessionID
   });
 
   if (error) {
-    console.error('[TikTok Callback] Error from TikTok:', error, error_description);
+    console.error('[TikTok Callback] TikTok error:', error, error_description);
     return res.send(`
-      <html><body style="font-family:sans-serif;padding:40px;
-        color:#aaa;background:#0a0a0a;text-align:center">
+      <html><body style="font-family:sans-serif;padding:40px;color:#aaa;background:#0a0a0a;text-align:center">
         <p>Authorization cancelled. Returning to app...</p>
         <script>setTimeout(function(){ window.location.replace('/'); }, 2000);</script>
       </body></html>`);
@@ -113,8 +194,7 @@ app.get('/auth/tiktok/callback', async (req, res) => {
 
   if (!code) {
     return res.send(`
-      <html><body style="font-family:sans-serif;padding:40px;
-        color:#c00;background:#0a0a0a;text-align:center">
+      <html><body style="font-family:sans-serif;padding:40px;color:#c00;background:#0a0a0a;text-align:center">
         <p>No authorization code received. Please try again.</p>
         <script>setTimeout(function(){ window.location.replace('/'); }, 3000);</script>
       </body></html>`);
@@ -134,7 +214,7 @@ app.get('/auth/tiktok/callback', async (req, res) => {
       { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
     );
 
-    console.log('[TikTok Callback] Token response:', tokenResponse.data);
+    console.log('[TikTok Callback] Token response:', JSON.stringify(tokenResponse.data));
     const { access_token, open_id } = tokenResponse.data;
 
     if (!access_token) {
@@ -147,34 +227,29 @@ app.get('/auth/tiktok/callback', async (req, res) => {
     );
 
     const user = userResponse.data.data?.user;
-    console.log('[TikTok Callback] User:', user);
+    console.log('[TikTok Callback] User fetched:', user?.display_name);
 
-    req.session.tiktokToken = access_token;
-    req.session.tiktokUser = {
-      display_name: user?.display_name || 'TikTok User',
-      avatar_url: user?.avatar_url || '',
-      open_id: open_id || ''
-    };
-
-    req.session.save((err) => {
-      if (err) {
-        console.error('[TikTok Callback] Session save error:', err);
+    // Store in signed cookie — survives server restarts unlike MemoryStore
+    setSession(res, {
+      tiktokToken: access_token,
+      tiktokUser: {
+        display_name: user?.display_name || 'TikTok User',
+        avatar_url: user?.avatar_url || '',
+        open_id: open_id || ''
       }
-      console.log('[TikTok Callback] Session saved. Redirecting to success.');
-      res.redirect('/auth/tiktok/success');
     });
+
+    console.log('[TikTok Callback] Session cookie set. Redirecting to success.');
+    res.redirect('/auth/tiktok/success');
 
   } catch (err: any) {
     const errData = err.response?.data || err.message;
     console.error('[TikTok Callback] FAILED:', JSON.stringify(errData));
     res.send(`
-      <html><body style="font-family:sans-serif;padding:40px;
-        color:#c00;background:#0a0a0a;text-align:center">
+      <html><body style="font-family:sans-serif;padding:40px;color:#c00;background:#0a0a0a;text-align:center">
         <h3>Authentication failed</h3>
-        <p style="font-size:13px;color:#888">Error: ${JSON.stringify(errData)}</p>
-        <p style="font-size:12px;color:#555;margin-top:20px">
-          Check server logs for details. Returning to app in 8 seconds...
-        </p>
+        <p style="font-size:13px;color:#888">${JSON.stringify(errData)}</p>
+        <p style="font-size:12px;color:#555;margin-top:20px">Returning to app in 8 seconds...</p>
         <script>setTimeout(function(){ window.location.replace('/'); }, 8000);</script>
       </body></html>`);
   }
@@ -184,15 +259,10 @@ app.get('/auth/tiktok/success', (req, res) => {
   res.send(`
     <html>
       <head><title>Connected!</title></head>
-      <body style="font-family:sans-serif;text-align:center;padding:60px;
-                   background:#0a0a0a;color:#fff">
-        <h2 style="color:#4ade80">✓ TikTok Connected!</h2>
+      <body style="font-family:sans-serif;text-align:center;padding:60px;background:#0a0a0a;color:#fff">
+        <h2 style="color:#4ade80">&#10003; TikTok Connected!</h2>
         <p style="color:#666;font-size:14px">Returning to TeleVibe...</p>
-        <script>
-          setTimeout(function() {
-            window.location.replace('/?tiktok=connected');
-          }, 800);
-        </script>
+        <script>setTimeout(function(){ window.location.replace('/?tiktok=connected'); }, 800);</script>
       </body>
     </html>
   `);
@@ -201,20 +271,21 @@ app.get('/auth/tiktok/success', (req, res) => {
 // ─── TikTok API Routes ───────────────────────────────────────────────────────
 
 app.get('/api/tiktok/me', (req, res) => {
-  const user = req.session.tiktokUser;
+  const session = getSession(req);
+  const user = session.tiktokUser;
+  console.log('[/api/tiktok/me] session user:', user ? user.display_name : 'none');
   if (!user) return res.status(401).json({ error: 'Not connected' });
   return res.json({ user });
 });
 
 app.post('/api/auth/logout', (req, res) => {
-  req.session.destroy((err) => {
-    if (err) console.error('Session destroy error:', err);
-    res.json({ success: true });
-  });
+  clearSession(res);
+  res.json({ success: true });
 });
 
 app.post('/api/tiktok/post', upload.single('video'), async (req, res) => {
-  const access_token = req.session.tiktokToken;
+  const session = getSession(req);
+  const access_token = session.tiktokToken;
   if (!access_token) return res.status(401).json({ error: 'Not authenticated' });
 
   const { caption } = req.body;
@@ -281,7 +352,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://0.0.0.0:${PORT}`);
+    console.log(`TeleVibe server running on http://0.0.0.0:${PORT}`);
   });
 }
 

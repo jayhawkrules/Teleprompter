@@ -21,29 +21,43 @@ const TIKTOK_CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET;
 const REDIRECT_URI = TIKTOK_REDIRECT_URI;
 const STATE_SECRET = process.env.SESSION_SECRET || 'televibe-state-secret-2024';
 
+// State format: {16-char random}{8-char timestamp base36}{16-char hmac}
+// All concatenated with NO separators — fixed-length fields only
 const createSignedState = (): string => {
-  const random = crypto.randomBytes(16).toString('hex');
-  const timestamp = Date.now().toString(36);
-  const payload = `${random}.${timestamp}`;
+  const random = crypto.randomBytes(8).toString('hex');       // 16 chars
+  const timestamp = Date.now().toString(36).padStart(8, '0'); // 8 chars  
+  const payload = random + timestamp;                          // 24 chars
   const sig = crypto.createHmac('sha256', STATE_SECRET)
-    .update(payload).digest('hex').substring(0, 16);
-  return `${payload}.${sig}`;
+    .update(payload)
+    .digest('hex')
+    .substring(0, 16);                                         // 16 chars
+  return payload + sig;                                        // 40 chars total, all hex/alphanumeric
 };
 
 const verifySignedState = (state: string): boolean => {
   try {
-    const parts = state.split('.');
-    if (parts.length !== 3) return false;
-    const [random, timestamp, sig] = parts;
+    if (!state || state.length !== 40) return false;
+    
+    const random = state.substring(0, 16);
+    const timestamp = state.substring(16, 24);
+    const sig = state.substring(24, 40);
+    
     // Check expiry — reject if older than 10 minutes
     const createdAt = parseInt(timestamp, 36);
+    if (isNaN(createdAt)) return false;
     if (Date.now() - createdAt > 600000) return false;
-    const payload = `${random}.${timestamp}`;
+    
+    const payload = random + timestamp;
     const expected = crypto.createHmac('sha256', STATE_SECRET)
-      .update(payload).digest('hex').substring(0, 16);
+      .update(payload)
+      .digest('hex')
+      .substring(0, 16);
+    
+    // Safe string comparison without timingSafeEqual buffer length issues
+    if (sig.length !== expected.length) return false;
     return crypto.timingSafeEqual(
-      Buffer.from(sig.padEnd(32, '0')),
-      Buffer.from(expected.padEnd(32, '0'))
+      Buffer.from(sig, 'hex'),
+      Buffer.from(expected, 'hex')
     );
   } catch {
     return false;

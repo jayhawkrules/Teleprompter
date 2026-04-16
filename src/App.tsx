@@ -211,6 +211,7 @@ export default function App() {
             <CameraPreview
               isRecording={isRecording}
               onRecordingComplete={handleRecordingComplete}
+              onStopRecording={() => setIsRecording(false)}
             />
 
             {isLive && (

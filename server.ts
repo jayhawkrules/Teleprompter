@@ -153,21 +153,26 @@ async function refreshTikTokToken(
   }
 }
 
+// ─── TikTok post helper ───────────────────────────────────────────────────────
 async function attemptTikTokPost(
   token: string,
   videoFile: Express.Multer.File,
   caption: string,
 ): Promise<string> {
-  const mimeType = videoFile.mimetype || 'video/webm';
+  const mimeType = videoFile.mimetype || 'video/mp4';
+
+  console.log('[TikTok Post] File size:', videoFile.size, 'MIME:', mimeType);
+
   const initResponse = await axios.post(
     'https://open.tiktokapis.com/v2/post/publish/video/init/',
     {
       post_info: {
-        title:            caption || 'Created with TeleVibe',
-        privacy_level:    'PUBLIC_TO_EVERYONE',
-        disable_duet:     false,
-        disable_comment:  false,
-        disable_stitch:   false,
+        title:                    caption.slice(0, 2200) || 'Created with TeleVibe',
+        privacy_level:            'SELF_ONLY', // safer for unverified apps — user can change in TikTok app
+        disable_duet:             false,
+        disable_comment:          false,
+        disable_stitch:           false,
+        video_cover_timestamp_ms: 1000,
       },
       source_info: {
         source:            'FILE_UPLOAD',
@@ -178,13 +183,22 @@ async function attemptTikTokPost(
     },
     { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } },
   );
+
+  console.log('[TikTok Post] Init response:', JSON.stringify(initResponse.data));
+
   const { upload_url, publish_id } = initResponse.data.data;
+
   await axios.put(upload_url, videoFile.buffer, {
     headers: {
-      'Content-Type':  mimeType,
-      'Content-Range': `bytes 0-${videoFile.size - 1}/${videoFile.size}`,
+      'Content-Type':   mimeType,
+      'Content-Range':  `bytes 0-${videoFile.size - 1}/${videoFile.size}`,
+      'Content-Length': videoFile.size,
     },
+    maxBodyLength:    Infinity,
+    maxContentLength: Infinity,
   });
+
+  console.log('[TikTok Post] Upload complete, publish_id:', publish_id);
   return publish_id;
 }
 
@@ -384,6 +398,10 @@ app.post('/api/tiktok/post', csrfGuard, upload.single('video'), async (req, res)
     const publish_id = await attemptTikTokPost(access_token, videoFile, caption);
     res.json({ success: true, publish_id });
   } catch (error: any) {
+    const tikTokError = error.response?.data;
+    console.error('[TikTok Post] Error status:', error.response?.status);
+    console.error('[TikTok Post] Error body:', JSON.stringify(tikTokError));
+
     if (error.response?.status === 401) {
       const newToken = await refreshTikTokToken(req, res);
       if (newToken) {
@@ -391,14 +409,19 @@ app.post('/api/tiktok/post', csrfGuard, upload.single('video'), async (req, res)
           const publish_id = await attemptTikTokPost(newToken, videoFile, caption);
           return res.json({ success: true, publish_id });
         } catch (e: any) {
-          console.error('[TikTok Post] Retry failed:', e.response?.data?.error || e.message);
-          return res.status(500).json({ error: 'Post failed after token refresh. Please reconnect TikTok.' });
+          const retryError = e.response?.data;
+          console.error('[TikTok Post] Retry error:', JSON.stringify(retryError));
+          return res.status(500).json({
+            error:  'Post failed after token refresh. Please reconnect TikTok.',
+            detail: retryError,
+          });
         }
       }
       return res.status(401).json({ error: 'Session expired. Please reconnect your TikTok account.' });
     }
-    console.error('[TikTok Post] Error:', error.response?.data?.error || error.message);
-    res.status(500).json({ error: 'Failed to post to TikTok' });
+
+    const message = tikTokError?.error?.message || tikTokError?.error || error.message || 'Unknown error';
+    res.status(500).json({ error: `TikTok API error: ${message}`, detail: tikTokError });
   }
 });
 

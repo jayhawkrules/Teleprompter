@@ -22,6 +22,7 @@ export function StyleTab({
 }: Props) {
   return (
     <div className="space-y-6">
+
       {/* Font size */}
       <div className="space-y-4">
         <div className="flex justify-between items-center">
@@ -59,26 +60,37 @@ export function StyleTab({
         <Switch checked={isVoiceActive} onCheckedChange={setIsVoiceActive} />
       </div>
 
-      {/* #14 — Scroll speed: only shown when voice sync is OFF */}
-      {!isVoiceActive && (
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <Label className="text-xs uppercase tracking-widest text-zinc-400">
-              Auto-Scroll Speed
-            </Label>
-            <span className="text-xs font-mono text-zinc-400">{scrollSpeed}</span>
-          </div>
-          <Slider
-            value={[scrollSpeed]}
-            onValueChange={(v) => setScrollSpeed(v[0])}
-            min={1} max={60} step={1}
-            className="py-4"
-          />
-          <p className="text-[10px] text-zinc-600 italic">
-            Only active when Voice Sync is off
-          </p>
+      {/* FIX 7: Scroll speed — show slider when voice OFF, preserved-value pill when voice ON */}
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <Label className="text-xs uppercase tracking-widest text-zinc-400">
+            Auto-Scroll Speed
+          </Label>
+          <span className="text-xs font-mono text-zinc-400">{scrollSpeed}</span>
         </div>
-      )}
+
+        {isVoiceActive ? (
+          <div className="flex items-center gap-2 px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg">
+            <div className="w-1.5 h-1.5 rounded-full bg-zinc-600" />
+            <p className="text-[10px] text-zinc-500">
+              Paused while Voice Sync is on — speed <span className="font-mono text-zinc-400">{scrollSpeed}</span> saved
+            </p>
+          </div>
+        ) : (
+          <>
+            <Slider
+              value={[scrollSpeed]}
+              onValueChange={(v) => setScrollSpeed(v[0])}
+              min={1} max={60} step={1}
+              className="py-4"
+            />
+            <p className="text-[10px] text-zinc-600 italic">
+              Only active when Voice Sync is off
+            </p>
+          </>
+        )}
+      </div>
+
     </div>
   );
 }

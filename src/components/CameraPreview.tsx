@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Camera, Video, RefreshCw, Settings2 } from 'lucide-react';
+import { Camera, Video, RefreshCw, Settings2, Square } from 'lucide-react';
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -13,9 +13,10 @@ import {
 interface CameraPreviewProps {
   isRecording: boolean;
   onRecordingComplete: (blob: Blob) => void;
+  onStopRecording: () => void;
 }
 
-export function CameraPreview({ isRecording, onRecordingComplete }: CameraPreviewProps) {
+export function CameraPreview({ isRecording, onRecordingComplete, onStopRecording }: CameraPreviewProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -66,7 +67,6 @@ export function CameraPreview({ isRecording, onRecordingComplete }: CameraPrevie
   };
 
   const setupCamera = async (videoId?: string, audioId?: string) => {
-    // ── FIX 1: reset active flag so standby screen shows during device switch ──
     setIsCameraActive(false);
     setError(null);
     await checkPermissions();
@@ -81,7 +81,6 @@ export function CameraPreview({ isRecording, onRecordingComplete }: CameraPrevie
       return;
     }
 
-    // Stop existing tracks before acquiring new stream
     if (videoRef.current?.srcObject) {
       const stream = videoRef.current.srcObject as MediaStream;
       stream.getTracks().forEach(track => track.stop());
@@ -103,7 +102,6 @@ export function CameraPreview({ isRecording, onRecordingComplete }: CameraPrevie
     } catch (err: any) {
       console.error('Camera access failed:', err);
 
-      // Fallback 1: video only (mic blocked)
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError' || err.message?.includes('denied')) {
         try {
           const videoOnlyStream = await navigator.mediaDevices.getUserMedia({
@@ -119,7 +117,6 @@ export function CameraPreview({ isRecording, onRecordingComplete }: CameraPrevie
         }
       }
 
-      // Fallback 2: minimal constraints
       if (!videoId && !audioId) {
         try {
           const basicStream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -301,13 +298,24 @@ export function CameraPreview({ isRecording, onRecordingComplete }: CameraPrevie
         </div>
       )}
 
+      {/* Recording indicator + Stop button overlaid on camera */}
       {isRecording && !error && (
-        <div className="absolute top-6 right-6 flex items-center gap-2 px-3 py-1 bg-red-600 rounded-full animate-pulse">
-          <div className="w-2 h-2 bg-white rounded-full" />
-          <span className="text-xs font-bold text-white uppercase tracking-wider">Recording</span>
+        <div className="absolute top-6 right-6 flex items-center gap-2 z-50">
+          <div className="flex items-center gap-2 px-3 py-1 bg-red-600 rounded-full animate-pulse">
+            <div className="w-2 h-2 bg-white rounded-full" />
+            <span className="text-xs font-bold text-white uppercase tracking-wider">REC</span>
+          </div>
+          <button
+            onClick={onStopRecording}
+            className="flex items-center gap-1.5 px-4 py-2 bg-white text-black rounded-full font-bold text-xs shadow-xl hover:bg-zinc-200 active:bg-zinc-300 transition-colors"
+            aria-label="Stop recording"
+          >
+            <Square className="w-3 h-3 fill-current" /> Stop
+          </button>
         </div>
       )}
 
+      {/* Camera/mic settings dropdown */}
       {!error && (
         <div className="absolute top-6 left-6 z-40">
           <DropdownMenu>

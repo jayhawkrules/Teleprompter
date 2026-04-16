@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Settings, Play, Square, Zap,
   ChevronRight, Video, FileText,
-  History as HistoryIcon, Share2
+  History as HistoryIcon, Share2, ChevronLeft
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -31,6 +31,8 @@ export default function App() {
   const [isVoiceActive, setIsVoiceActive] = useState(false);
   const [copyStatus, setCopyStatus]       = useState<'idle' | 'copied'>('idle');
   const [toasts, setToasts]               = useState<Toast[]>([]);
+  // Mobile: track whether we're in the fullscreen camera view
+  const [mobileCamera, setMobileCamera]   = useState(false);
 
   const effectiveCaption = caption.trim() || script.slice(0, 150);
 
@@ -86,8 +88,116 @@ export default function App() {
     setTimeout(() => setCopyStatus('idle'), 2000);
   }, [effectiveCaption]);
 
+  const handleExitSession = useCallback(() => {
+    if (isRecording) setIsRecording(false);
+    setIsLive(false);
+    setMobileCamera(false);
+  }, [isRecording]);
+
+  // On mobile, when user clicks Start Session → go straight to camera
+  const handleStartSession = useCallback(() => {
+    setIsLive(true);
+    setMobileCamera(true);
+  }, []);
+
+  // Mobile fullscreen camera overlay
+  const MobileCameraView = (
+    <div
+      className="fixed inset-0 bg-black z-50 flex flex-col"
+      style={{ height: '100dvh' }}
+    >
+      {/* Full-bleed camera */}
+      <div className="relative flex-1 overflow-hidden">
+        <CameraPreview
+          isRecording={isRecording}
+          onRecordingComplete={handleRecordingComplete}
+          onStopRecording={() => setIsRecording(false)}
+        />
+
+        {/* Teleprompter overlay */}
+        {isLive && (
+          <Teleprompter
+            text={script}
+            fontSize={fontSize}
+            scrollSpeed={scrollSpeed}
+            isAutoScroll={!isVoiceActive}
+            isVoiceActive={isVoiceActive}
+            opacity={opacity}
+          />
+        )}
+
+        {/* Top bar: back button */}
+        <div className="absolute top-4 left-4 right-4 flex items-center justify-between" style={{ zIndex: 100 }}>
+          <button
+            onClick={() => setMobileCamera(false)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-black/50 backdrop-blur-md border border-zinc-700 rounded-full text-xs font-bold text-white"
+          >
+            <ChevronLeft className="w-4 h-4" /> Back
+          </button>
+
+          {/* Exit session button */}
+          <button
+            onClick={handleExitSession}
+            className="px-3 py-2 bg-black/50 backdrop-blur-md border border-zinc-700 rounded-full text-xs font-bold text-zinc-300"
+          >
+            Exit
+          </button>
+        </div>
+
+        {/* Record / Stop button */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2" style={{ zIndex: 100 }}>
+          <button
+            onClick={() => setIsRecording(!isRecording)}
+            className={`flex items-center gap-2 px-10 py-4 rounded-full font-bold text-base shadow-2xl transition-colors ${
+              isRecording
+                ? 'bg-red-600 hover:bg-red-700 text-white'
+                : 'bg-white hover:bg-zinc-200 text-black'
+            }`}
+          >
+            {isRecording
+              ? <><Square className="w-5 h-5 fill-current" /> Stop Recording</>
+              : <><Play   className="w-5 h-5 fill-current" /> Start Recording</>}
+          </button>
+        </div>
+      </div>
+
+      {/* Recording toast inside mobile camera view */}
+      <AnimatePresence>
+        {recordedBlob && !isRecording && (
+          <RecordingToast
+            blob={recordedBlob}
+            effectiveCaption={effectiveCaption}
+            tiktokUser={tiktokUser}
+            isPosting={isPosting}
+            onPost={handlePostToTikTok}
+            onDownload={downloadVideo}
+            onDiscard={() => setRecordedBlob(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
+    </div>
+  );
+
   return (
     <div className="bg-[#0a0a0a] text-zinc-100 font-sans selection:bg-zinc-700" style={{ height: '100dvh', display: 'flex', flexDirection: 'column' }}>
+
+      {/* Mobile camera fullscreen — rendered as portal-like fixed overlay */}
+      <AnimatePresence>
+        {mobileCamera && (
+          <motion.div
+            key="mobile-camera"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            {MobileCameraView}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="max-w-7xl mx-auto w-full flex flex-col md:flex-row" style={{ flex: 1, minHeight: 0 }}>
 
         {/* ── Left Sidebar ── */}
@@ -95,7 +205,7 @@ export default function App() {
           className="w-full md:w-[400px] bg-[#111111] border-r border-zinc-800 flex flex-col"
           style={{ height: '100%', minHeight: 0 }}
         >
-          {/* Header — fixed, never scrolls */}
+          {/* Header */}
           <div className="flex-shrink-0 p-6 border-b border-zinc-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-zinc-100 rounded-lg flex items-center justify-center">
@@ -166,27 +276,38 @@ export default function App() {
             </div>
           </div>
 
-          {/* Session controls — always pinned to bottom, never scrolls away */}
+          {/* Session controls */}
           <div className="flex-shrink-0 p-6 border-t border-zinc-800 bg-zinc-900/50">
             {!isLive ? (
-              <Button
-                onClick={() => setIsLive(true)}
-                className="w-full h-14 bg-zinc-100 text-black hover:bg-white rounded-xl font-bold text-lg shadow-xl shadow-white/5"
-              >
-                Start Session
-              </Button>
+              <>
+                {/* Desktop: Start Session normally */}
+                <Button
+                  onClick={() => setIsLive(true)}
+                  className="hidden md:flex w-full h-14 bg-zinc-100 text-black hover:bg-white rounded-xl font-bold text-lg shadow-xl shadow-white/5 items-center justify-center"
+                >
+                  Start Session
+                </Button>
+                {/* Mobile: Start Session → jump straight to camera */}
+                <Button
+                  onClick={handleStartSession}
+                  className="flex md:hidden w-full h-14 bg-zinc-100 text-black hover:bg-white rounded-xl font-bold text-lg shadow-xl shadow-white/5 items-center justify-center gap-2"
+                >
+                  <Video className="w-5 h-5" /> Start Recording
+                </Button>
+              </>
             ) : (
               <div className="grid grid-cols-2 gap-3">
                 <Button
                   variant="outline"
-                  onClick={() => { if (isRecording) setIsRecording(false); setIsLive(false); }}
+                  onClick={handleExitSession}
                   className="h-14 border-zinc-800 hover:bg-zinc-800 rounded-xl font-bold text-black"
                 >
                   Exit
                 </Button>
+                {/* Desktop record button */}
                 <Button
                   onClick={() => setIsRecording(!isRecording)}
-                  className={`h-14 rounded-xl font-bold text-lg shadow-lg ${
+                  className={`hidden md:flex h-14 rounded-xl font-bold text-lg shadow-lg items-center justify-center ${
                     isRecording
                       ? 'bg-red-600 hover:bg-red-700 text-white shadow-red-900/20'
                       : 'bg-zinc-100 text-black hover:bg-white shadow-white/5'
@@ -196,13 +317,20 @@ export default function App() {
                     ? <><Square className="w-5 h-5 mr-2 fill-current" /> Stop</>
                     : <><Play   className="w-5 h-5 mr-2 fill-current" /> Record</>}
                 </Button>
+                {/* Mobile: return to camera */}
+                <Button
+                  onClick={() => setMobileCamera(true)}
+                  className="flex md:hidden h-14 rounded-xl font-bold text-lg shadow-lg bg-zinc-100 text-black hover:bg-white shadow-white/5 items-center justify-center gap-2"
+                >
+                  <Video className="w-5 h-5" /> Camera
+                </Button>
               </div>
             )}
           </div>
         </div>
 
-        {/* ── Main Preview ── */}
-        <div className="flex-1 relative bg-black flex flex-col items-center justify-center p-4 md:p-12 overflow-hidden">
+        {/* ── Main Preview (desktop only) ── */}
+        <div className="hidden md:flex flex-1 relative bg-black flex-col items-center justify-center p-4 md:p-12 overflow-hidden">
           <div className="aspect-[9/16] h-full max-h-[90vh] relative">
             <CameraPreview
               isRecording={isRecording}

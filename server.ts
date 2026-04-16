@@ -168,7 +168,7 @@ async function attemptTikTokPost(
     {
       post_info: {
         title:                    caption.slice(0, 2200) || 'Created with TeleVibe',
-        privacy_level:            'SELF_ONLY', // safer for unverified apps — user can change in TikTok app
+        privacy_level:            'SELF_ONLY',
         disable_duet:             false,
         disable_comment:          false,
         disable_stitch:           false,
@@ -253,7 +253,7 @@ Return ONLY valid JSON: { "script": "...", "caption": "..." }`;
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.0-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -275,6 +275,51 @@ Return ONLY valid JSON: { "script": "...", "caption": "..." }`;
   } catch (error: any) {
     console.error('[Gemini] Error:', error?.message ?? String(error));
     res.status(500).json({ error: 'Failed to generate script: ' + (error.message || String(error)) });
+  }
+});
+
+// ─── Topic Similarity Check ───────────────────────────────────────────────────
+app.post('/api/check-topic-similarity', async (req, res) => {
+  if (!GEMINI_API_KEY) return res.json({ similar: false });
+
+  const { newTopic, pastTopics } = req.body;
+  if (!newTopic || !pastTopics) return res.json({ similar: false });
+
+  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+
+  const prompt = `You are checking if a new video topic overlaps with previously covered topics.
+
+New topic: "${newTopic}"
+
+Past topics already covered:
+- ${pastTopics}
+
+Answer with JSON only: { "similar": true/false, "matchedTopic": "the closest past topic if similar, else null" }
+Be strict — only flag as similar if the core subject is genuinely the same. Different angles on the same broad subject count as similar.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model:    'gemini-2.0-flash',
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            similar:      { type: Type.BOOLEAN },
+            matchedTopic: { type: Type.STRING },
+          },
+          required: ['similar'],
+        },
+      },
+    });
+    const rawText = typeof response.text === 'function' ? response.text() : response.text;
+    const result  = JSON.parse(rawText || '{}');
+    console.log('[Gemini] Topic similarity check:', result);
+    res.json({ similar: result.similar || false, matchedTopic: result.matchedTopic || null });
+  } catch (err: any) {
+    console.error('[Gemini] Similarity check error:', err.message);
+    res.json({ similar: false });
   }
 });
 

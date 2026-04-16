@@ -48,14 +48,43 @@ async function serverDelete(id: string): Promise<HistoryItem[] | null> {
   } catch { return null; }
 }
 
+// ── Topic similarity check via Gemini ─────────────────────────────────────────
+async function checkTopicSimilarity(
+  newTopic: string,
+  history: HistoryItem[],
+): Promise<{ similar: boolean; matchedTopic?: string }> {
+  if (history.length === 0) return { similar: false };
+
+  // Build a compact list of past topics/scripts to send to Gemini
+  const pastTopics = history
+    .slice(0, 20)
+    .map(h => h.topic || h.script.slice(0, 80))
+    .filter(Boolean)
+    .join('\n- ');
+
+  try {
+    const res = await fetch('/api/check-topic-similarity', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ newTopic, pastTopics }),
+    });
+    if (!res.ok) return { similar: false };
+    return await res.json();
+  } catch {
+    return { similar: false };
+  }
+}
+
 export function useAI(showToast: ToastFn) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [history, setHistory]           = useState<HistoryItem[]>([]);
   const [useServer, setUseServer]       = useState<boolean | null>(null);
 
-  // ── FIX 4: ref so addItem/deleteItem always read latest value, no stale closure ──
   const useServerRef = useRef<boolean | null>(null);
+  const historyRef   = useRef<HistoryItem[]>([]);
+
   useEffect(() => { useServerRef.current = useServer; }, [useServer]);
+  useEffect(() => { historyRef.current   = history;   }, [history]);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,45 +103,46 @@ export function useAI(showToast: ToastFn) {
 
   const addItem = useCallback(async (item: HistoryItem) => {
     const serverMode = useServerRef.current;
-
     if (serverMode === true || serverMode === null) {
       const updated = await serverAdd(item);
-      if (updated) {
-        setHistory(updated);
-        return;
-      }
+      if (updated) { setHistory(updated); return; }
     }
-    // localStorage fallback
     setHistory(prev => {
       const next = [item, ...prev].slice(0, 20);
       lsSet(next);
       return next;
     });
-  }, []); // no deps — reads live value from ref
+  }, []);
 
   const deleteHistoryItem = useCallback(async (id: string) => {
     const serverMode = useServerRef.current;
-
     if (serverMode === true || serverMode === null) {
       const updated = await serverDelete(id);
-      if (updated) {
-        setHistory(updated);
-        return;
-      }
+      if (updated) { setHistory(updated); return; }
     }
     setHistory(prev => {
       const next = prev.filter(i => i.id !== id);
       lsSet(next);
       return next;
     });
-  }, []); // no deps — reads live value from ref
+  }, []);
 
   const generate = useCallback(async (
     topic: string,
-    onSuccess: (script: string, caption: string) => void
+    onSuccess: (script: string, caption: string) => void,
+    force = false,
   ) => {
     setIsGenerating(true);
     try {
+      // ── Topic duplicate check (skip if no topic entered or force override) ──
+      if (topic && !force && historyRef.current.length > 0) {
+        const { similar, matchedTopic } = await checkTopicSimilarity(topic, historyRef.current);
+        if (similar) {
+          showToast('info', `⚠️ Similar topic already covered: "${matchedTopic || topic}". Generating anyway…`);
+          // Still generate — just warn them
+        }
+      }
+
       const result = await generateIndustryScript(topic || undefined);
       onSuccess(result.script, result.caption);
       const newItem: HistoryItem = {

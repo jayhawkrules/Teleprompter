@@ -30,7 +30,7 @@ export default function App() {
   const [fontSize, setFontSize]         = useState(32);
   const [scrollSpeed, setScrollSpeed]   = useState(20);
   const [opacity, setOpacity]           = useState(40);
-  const [isVoiceActive, setIsVoiceActive] = useState(true);
+  const [isVoiceActive, setIsVoiceActive] = useState(false);
   const [copyStatus, setCopyStatus]     = useState<'idle' | 'copied'>('idle');
   const [toasts, setToasts]             = useState<Toast[]>([]);
 
@@ -183,7 +183,7 @@ export default function App() {
               <div className="grid grid-cols-2 gap-3">
                 <Button
                   variant="outline"
-                  onClick={() => setIsLive(false)}
+                  onClick={() => { if (isRecording) setIsRecording(false); setIsLive(false); }}
                   className="h-14 border-zinc-800 hover:bg-zinc-800 rounded-xl font-bold text-black"
                 >
                   Exit

@@ -13,26 +13,34 @@ import { getHistory, addHistoryItem, deleteHistoryItem } from './historyStore';
 
 dotenv.config();
 
-const app = express();
-const PORT = 3000;
+const app    = express();
+const PORT   = 3000;
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 150 * 1024 * 1024 } });
 
-const TIKTOK_REDIRECT_URI = process.env.TIKTOK_REDIRECT_URI ||
-  'https://teleprompter.producinghollywood.com/auth/tiktok/callback';
+const TIKTOK_REDIRECT_URI  = process.env.TIKTOK_REDIRECT_URI || 'https://teleprompter.producinghollywood.com/auth/tiktok/callback';
 const TIKTOK_CLIENT_KEY    = process.env.TIKTOK_CLIENT_KEY;
 const TIKTOK_CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET;
-const SESSION_SECRET       = process.env.SESSION_SECRET || 'televibe-secret-change-me-in-production';
-// Accept either name — hosting panels often use GOOGLE_API_KEY
 const GEMINI_API_KEY       = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 
-const AES_KEY = crypto.createHash('sha256').update(SESSION_SECRET).digest();
+// ── FIX 8a: throw in production if SESSION_SECRET is missing ─────────────────
+const SESSION_SECRET = process.env.SESSION_SECRET;
+if (!SESSION_SECRET) {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('[FATAL] SESSION_SECRET environment variable is not set. Set it in your Cloud Run secrets before deploying.');
+  } else {
+    console.warn('[WARNING] SESSION_SECRET not set — using insecure dev default. Never deploy without this set.');
+  }
+}
+const EFFECTIVE_SECRET = SESSION_SECRET || 'televibe-dev-only-do-not-use-in-production';
+
+const AES_KEY = crypto.createHash('sha256').update(EFFECTIVE_SECRET).digest();
 const AES_ALG = 'aes-256-gcm' as const;
 
 app.set('trust proxy', 1);
 
 const ALLOWED_ORIGINS = [
   'https://teleprompter.producinghollywood.com',
-  'http://localhost:3000'
+  'http://localhost:3000',
 ];
 
 app.use(cors({ origin: ALLOWED_ORIGINS, credentials: true }));
@@ -45,10 +53,10 @@ const scriptRateLimit = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many requests — please wait a minute and try again.' }
+  message: { error: 'Too many requests — please wait a minute and try again.' },
 });
 
-// ─── CSRF guard ──────────────────────────────────────────────────────────────
+// ─── CSRF guard ───────────────────────────────────────────────────────────────
 function csrfGuard(req: express.Request, res: express.Response, next: express.NextFunction) {
   const origin  = req.headers['origin']  as string | undefined;
   const referer = req.headers['referer'] as string | undefined;
@@ -61,7 +69,7 @@ function csrfGuard(req: express.Request, res: express.Response, next: express.Ne
   next();
 }
 
-// ─── AES-256-GCM session cookie ───────────────────────────────────────────────────
+// ─── AES-256-GCM session cookie ───────────────────────────────────────────────
 const COOKIE_NAME = 'televibe_session';
 
 function encryptSession(data: object): string {
@@ -100,10 +108,10 @@ function setSession(res: express.Response, data: Record<string, any>) {
   const isProduction = process.env.NODE_ENV === 'production';
   res.cookie(COOKIE_NAME, encrypted, {
     httpOnly: true,
-    secure: isProduction,
+    secure:   isProduction,
     sameSite: isProduction ? 'none' : 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-    path: '/'
+    maxAge:   7 * 24 * 60 * 60 * 1000,
+    path:     '/',
   });
 }
 
@@ -111,10 +119,10 @@ function clearSession(res: express.Response) {
   res.clearCookie(COOKIE_NAME, { path: '/' });
 }
 
-// ─── Token refresh ──────────────────────────────────────────────────────────────
+// ─── Token refresh ────────────────────────────────────────────────────────────
 async function refreshTikTokToken(
   req: express.Request,
-  res: express.Response
+  res: express.Response,
 ): Promise<string | null> {
   const session       = getSession(req);
   const refresh_token = session.tiktokRefreshToken;
@@ -126,10 +134,12 @@ async function refreshTikTokToken(
     const response = await axios.post(
       'https://open.tiktokapis.com/v2/oauth/token/',
       new URLSearchParams({
-        client_key: TIKTOK_CLIENT_KEY!, client_secret: TIKTOK_CLIENT_SECRET!,
-        grant_type: 'refresh_token', refresh_token,
+        client_key:    TIKTOK_CLIENT_KEY!,
+        client_secret: TIKTOK_CLIENT_SECRET!,
+        grant_type:    'refresh_token',
+        refresh_token,
       }),
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
     );
     const { access_token, refresh_token: new_refresh_token } = response.data;
     if (!access_token) { console.error('[TikTok] Refresh missing access_token'); return null; }
@@ -142,6 +152,42 @@ async function refreshTikTokToken(
     console.error('[TikTok] Token refresh failed:', safe);
     return null;
   }
+}
+
+// ── FIX 8b: attemptPost extracted — no longer redefined on every request ─────
+async function attemptTikTokPost(
+  token: string,
+  videoFile: Express.Multer.File,
+  caption: string,
+): Promise<string> {
+  const mimeType = videoFile.mimetype || 'video/webm';
+  const initResponse = await axios.post(
+    'https://open.tiktokapis.com/v2/post/publish/video/init/',
+    {
+      post_info: {
+        title:            caption || 'Created with TeleVibe',
+        privacy_level:    'PUBLIC_TO_EVERYONE',
+        disable_duet:     false,
+        disable_comment:  false,
+        disable_stitch:   false,
+      },
+      source_info: {
+        source:            'FILE_UPLOAD',
+        video_size:        videoFile.size,
+        chunk_size:        videoFile.size,
+        total_chunk_count: 1,
+      },
+    },
+    { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } },
+  );
+  const { upload_url, publish_id } = initResponse.data.data;
+  await axios.put(upload_url, videoFile.buffer, {
+    headers: {
+      'Content-Type':  mimeType,
+      'Content-Range': `bytes 0-${videoFile.size - 1}/${videoFile.size}`,
+    },
+  });
+  return publish_id;
 }
 
 // ─── AI Script Generation ─────────────────────────────────────────────────────
@@ -174,19 +220,18 @@ Return ONLY a JSON object with "script" and "caption" fields. No markdown, no ex
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model:    'gemini-2.0-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
         responseSchema: {
-          type: Type.OBJECT,
+          type:       Type.OBJECT,
           properties: { script: { type: Type.STRING }, caption: { type: Type.STRING } },
-          required: ['script', 'caption'],
+          required:   ['script', 'caption'],
         },
       },
     });
 
-    // @google/genai v1.x: response.text is a method, not a property
     const rawText = typeof response.text === 'function' ? response.text() : response.text;
     const result  = JSON.parse(rawText || '{}');
     console.log('[Gemini] Script generated successfully');
@@ -195,13 +240,13 @@ Return ONLY a JSON object with "script" and "caption" fields. No markdown, no ex
       caption: result.caption || 'Failed to generate caption.',
     });
   } catch (error: any) {
-    console.error('[Gemini] Error status:', error?.status ?? 'unknown');
+    console.error('[Gemini] Error status:',  error?.status      ?? 'unknown');
     console.error('[Gemini] Error details:', error?.errorDetails ?? error?.message ?? String(error));
     res.status(500).json({ error: 'Failed to generate script: ' + (error.message || String(error)) });
   }
 });
 
-// ─── History Routes ──────────────────────────────────────────────────────────────
+// ─── History Routes ───────────────────────────────────────────────────────────
 app.get('/api/history', (req, res) => {
   const session = getSession(req);
   const openId  = session.tiktokUser?.open_id;
@@ -227,15 +272,17 @@ app.delete('/api/history/:id', csrfGuard, (req, res) => {
   res.json(updated);
 });
 
-// ─── TikTok Auth Routes ──────────────────────────────────────────────────────
+// ─── TikTok Auth Routes ───────────────────────────────────────────────────────
 app.get('/auth/tiktok', (req, res) => {
-  if (!TIKTOK_CLIENT_KEY) return res.status(500).send('TikTok Client Key not configured');
+  if (!TIKTOK_CLIENT_KEY) return res.status(500.send('TikTok Client Key not configured');
   const userAgent = req.headers['user-agent'] || '';
   const isMobile  = /iPhone|iPad|iPod|Android/i.test(userAgent);
   const params = new URLSearchParams({
-    client_key: TIKTOK_CLIENT_KEY!, scope: 'user.info.basic,video.upload,video.publish',
-    response_type: 'code', redirect_uri: TIKTOK_REDIRECT_URI,
-    state: 'televibe_' + crypto.randomBytes(20).toString('hex'),
+    client_key:    TIKTOK_CLIENT_KEY!,
+    scope:         'user.info.basic,video.upload,video.publish',
+    response_type: 'code',
+    redirect_uri:  TIKTOK_REDIRECT_URI,
+    state:         'televibe_' + crypto.randomBytes(20).toString('hex'),
   });
   if (isMobile) params.append('disable_auto_login', '1');
   res.redirect(`https://www.tiktok.com/v2/auth/authorize/?${params.toString()}`);
@@ -253,27 +300,31 @@ app.get('/auth/tiktok/callback', async (req, res) => {
     const tokenResponse = await axios.post(
       'https://open.tiktokapis.com/v2/oauth/token/',
       new URLSearchParams({
-        client_key: TIKTOK_CLIENT_KEY!, client_secret: TIKTOK_CLIENT_SECRET!,
-        code: code as string, grant_type: 'authorization_code', redirect_uri: TIKTOK_REDIRECT_URI,
+        client_key:    TIKTOK_CLIENT_KEY!,
+        client_secret: TIKTOK_CLIENT_SECRET!,
+        code:          code as string,
+        grant_type:    'authorization_code',
+        redirect_uri:  TIKTOK_REDIRECT_URI,
       }),
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
     );
     const { access_token, refresh_token, open_id } = tokenResponse.data;
     if (!access_token) throw new Error('No access_token in response');
 
     const userResponse = await axios.get(
       'https://open.tiktokapis.com/v2/user/info/?fields=display_name,avatar_url',
-      { headers: { Authorization: `Bearer ${access_token}` } }
+      { headers: { Authorization: `Bearer ${access_token}` } },
     );
     const user = userResponse.data.data?.user;
 
     setSession(res, {
-      tiktokToken: access_token, tiktokRefreshToken: refresh_token || null,
+      tiktokToken:        access_token,
+      tiktokRefreshToken: refresh_token || null,
       tiktokUser: {
         display_name: user?.display_name || 'TikTok User',
         avatar_url:   user?.avatar_url   || '',
-        open_id:      open_id            || ''
-      }
+        open_id:      open_id            || '',
+      },
     });
     res.redirect('/auth/tiktok/success');
   } catch (err: any) {
@@ -289,7 +340,7 @@ app.get('/auth/tiktok/success', (_req, res) => {
   res.send(`<html><head><title>Connected!</title></head><body style="font-family:sans-serif;text-align:center;padding:60px;background:#0a0a0a;color:#fff"><h2 style="color:#4ade80">&#10003; TikTok Connected!</h2><p style="color:#666;font-size:14px">Returning to TeleVibe...</p><script>setTimeout(function(){ window.location.replace('/?tiktok=connected'); }, 800);</script></body></html>`);
 });
 
-// ─── TikTok API Routes ───────────────────────────────────────────────────────
+// ─── TikTok API Routes ────────────────────────────────────────────────────────
 app.get('/api/tiktok/me', (req, res) => {
   const session = getSession(req);
   const user    = session.tiktokUser;
@@ -310,33 +361,18 @@ app.post('/api/tiktok/post', csrfGuard, upload.single('video'), async (req, res)
   const { caption } = req.body;
   const videoFile   = req.file;
   if (!videoFile) return res.status(400).json({ error: 'No video provided' });
-  const mimeType = videoFile.mimetype || 'video/webm';
-
-  const attemptPost = async (token: string) => {
-    const initResponse = await axios.post(
-      'https://open.tiktokapis.com/v2/post/publish/video/init/',
-      {
-        post_info:   { title: caption || 'Created with TeleVibe', privacy_level: 'PUBLIC_TO_EVERYONE', disable_duet: false, disable_comment: false, disable_stitch: false },
-        source_info: { source: 'FILE_UPLOAD', video_size: videoFile.size, chunk_size: videoFile.size, total_chunk_count: 1 }
-      },
-      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
-    );
-    const { upload_url, publish_id } = initResponse.data.data;
-    await axios.put(upload_url, videoFile.buffer, {
-      headers: { 'Content-Type': mimeType, 'Content-Range': `bytes 0-${videoFile.size - 1}/${videoFile.size}` }
-    });
-    return publish_id;
-  };
 
   try {
-    const publish_id = await attemptPost(access_token);
+    const publish_id = await attemptTikTokPost(access_token, videoFile, caption);
     res.json({ success: true, publish_id });
   } catch (error: any) {
     if (error.response?.status === 401) {
       const newToken = await refreshTikTokToken(req, res);
       if (newToken) {
-        try { return res.json({ success: true, publish_id: await attemptPost(newToken) }); }
-        catch (e: any) {
+        try {
+          const publish_id = await attemptTikTokPost(newToken, videoFile, caption);
+          return res.json({ success: true, publish_id });
+        } catch (e: any) {
           console.error('[TikTok Post] Retry failed:', e.response?.data?.error || e.message);
           return res.status(500).json({ error: 'Post failed after token refresh. Please reconnect TikTok.' });
         }
@@ -348,7 +384,7 @@ app.post('/api/tiktok/post', csrfGuard, upload.single('video'), async (req, res)
   }
 });
 
-// ─── Vite / Static ───────────────────────────────────────────────────────────
+// ─── Vite / Static ────────────────────────────────────────────────────────────
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });

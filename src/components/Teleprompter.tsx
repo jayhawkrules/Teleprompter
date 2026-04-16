@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion } from 'motion/react';
 
 interface TeleprompterProps {
@@ -10,7 +10,6 @@ interface TeleprompterProps {
   opacity: number;
 }
 
-// Strip punctuation and lowercase for fuzzy matching
 function clean(w: string): string {
   return w.replace(/[^a-z0-9']/gi, '').toLowerCase();
 }
@@ -30,14 +29,21 @@ export function Teleprompter({
   const recognitionRef = useRef<any>(null);
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const words = text.split(/\s+/).filter(Boolean);
+  // ── FIX 2: single source of truth for words ────────────────────────────────
+  const words = useMemo(() => text.split(/\s+/).filter(Boolean), [text]);
   const wordsRef = useRef(words);
-  useEffect(() => { wordsRef.current = text.split(/\s+/).filter(Boolean); }, [text]);
+  useEffect(() => { wordsRef.current = words; }, [words]);
 
-  // Keep ref in sync so recognition closure always reads latest index
+  // Keep index ref in sync
   useEffect(() => { currentWordIndexRef.current = currentWordIndex; }, [currentWordIndex]);
 
-  // ── Voice-sync scroll: update Y when word changes ──────────────────────────
+  // Reset word index when script changes
+  useEffect(() => {
+    setCurrentWordIndex(-1);
+    setScrollPos(0);
+  }, [text]);
+
+  // Voice-sync scroll
   useEffect(() => {
     if (!isVoiceActive || currentWordIndex < 0) return;
     const wordEl = document.getElementById(`word-${currentWordIndex}`);
@@ -47,7 +53,7 @@ export function Teleprompter({
     }
   }, [currentWordIndex, isVoiceActive]);
 
-  // ── Auto-scroll (timer-based, used when voice is OFF) ─────────────────────
+  // Auto-scroll (timer-based, when voice is OFF)
   useEffect(() => {
     if (!isAutoScroll || isVoiceActive) return;
     const interval = setInterval(() => {
@@ -56,7 +62,7 @@ export function Teleprompter({
     return () => clearInterval(interval);
   }, [isAutoScroll, isVoiceActive, scrollSpeed]);
 
-  // ── Speech Recognition ────────────────────────────────────────────────────
+  // Speech Recognition
   useEffect(() => {
     if (!isVoiceActive) {
       recognitionRef.current?.stop();
@@ -75,7 +81,6 @@ export function Teleprompter({
 
     function startRecognition() {
       if (!active) return;
-
       const recognition = new SR();
       recognitionRef.current = recognition;
       recognition.continuous = true;
@@ -84,31 +89,23 @@ export function Teleprompter({
       recognition.maxAlternatives = 1;
 
       recognition.onresult = (event: any) => {
-        // Collect all interim + final results from this session
         let fullTranscript = '';
         for (let i = 0; i < event.results.length; i++) {
           fullTranscript += event.results[i][0].transcript + ' ';
         }
         const spokenWords = fullTranscript.trim().split(/\s+/).map(clean).filter(Boolean);
-
         const scriptWords = wordsRef.current;
         let bestIndex = currentWordIndexRef.current;
-
-        // Slide a window of the last 6 spoken words over the script
         const windowSize = 6;
         const recentSpoken = spokenWords.slice(-windowSize);
 
         for (let si = bestIndex + 1; si < scriptWords.length; si++) {
           const scriptWord = clean(scriptWords[si]);
           if (!scriptWord) continue;
-          // Match if any recent spoken word starts with or equals this script word
           const matched = recentSpoken.some(
             sw => sw === scriptWord || (scriptWord.length > 3 && sw.startsWith(scriptWord.slice(0, Math.floor(scriptWord.length * 0.75))))
           );
-          if (matched) {
-            bestIndex = si;
-            // Don't break — keep scanning to find the furthest match
-          }
+          if (matched) bestIndex = si;
         }
 
         if (bestIndex > currentWordIndexRef.current) {
@@ -117,7 +114,6 @@ export function Teleprompter({
       };
 
       recognition.onerror = (e: any) => {
-        // 'no-speech' and 'aborted' are expected — just restart
         if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
           console.warn('[Voice] Microphone permission denied.');
           active = false;
@@ -126,13 +122,11 @@ export function Teleprompter({
         scheduleRestart();
       };
 
-      recognition.onend = () => {
-        scheduleRestart();
-      };
+      recognition.onend = () => { scheduleRestart(); };
 
       try {
         recognition.start();
-      } catch (err) {
+      } catch {
         scheduleRestart();
       }
     }
@@ -162,9 +156,7 @@ export function Teleprompter({
       style={{ backgroundColor: `rgba(0, 0, 0, ${opacity / 100})` }}
     >
       <div className="w-full max-w-md h-full overflow-hidden relative">
-        {/* Focus band */}
         <div className="absolute top-1/3 left-0 right-0 h-20 border-y border-white/20 pointer-events-none z-20 bg-white/5" />
-
         <motion.div
           animate={{ y: -scrollPos }}
           transition={{ type: 'spring', damping: 30, stiffness: 100, mass: 0.5 }}

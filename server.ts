@@ -22,7 +22,8 @@ const TIKTOK_REDIRECT_URI = process.env.TIKTOK_REDIRECT_URI ||
 const TIKTOK_CLIENT_KEY    = process.env.TIKTOK_CLIENT_KEY;
 const TIKTOK_CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET;
 const SESSION_SECRET       = process.env.SESSION_SECRET || 'televibe-secret-change-me-in-production';
-const GEMINI_API_KEY       = process.env.GEMINI_API_KEY;
+// Accept either name — hosting panels often use GOOGLE_API_KEY
+const GEMINI_API_KEY       = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 
 const AES_KEY = crypto.createHash('sha256').update(SESSION_SECRET).digest();
 const AES_ALG = 'aes-256-gcm' as const;
@@ -145,7 +146,10 @@ async function refreshTikTokToken(
 
 // ─── AI Script Generation ─────────────────────────────────────────────────────
 app.post('/api/generate-script', scriptRateLimit, async (req, res) => {
-  if (!GEMINI_API_KEY) return res.status(500).json({ error: 'AI service not configured. Please add GEMINI_API_KEY to environment variables.' });
+  if (!GEMINI_API_KEY) {
+    console.error('[Gemini] No API key found. Set GEMINI_API_KEY or GOOGLE_API_KEY in environment variables.');
+    return res.status(500).json({ error: 'AI service not configured. Please add GEMINI_API_KEY to environment variables.' });
+  }
 
   const { topic } = req.body;
   const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
@@ -170,7 +174,7 @@ Return ONLY a JSON object with "script" and "caption" fields. No markdown, no ex
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash-lite',
+      model: 'gemini-2.0-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
@@ -191,7 +195,8 @@ Return ONLY a JSON object with "script" and "caption" fields. No markdown, no ex
       caption: result.caption || 'Failed to generate caption.',
     });
   } catch (error: any) {
-    console.error('[Gemini] Error:', error.message || error);
+    console.error('[Gemini] Error status:', error?.status ?? 'unknown');
+    console.error('[Gemini] Error details:', error?.errorDetails ?? error?.message ?? String(error));
     res.status(500).json({ error: 'Failed to generate script: ' + (error.message || String(error)) });
   }
 });

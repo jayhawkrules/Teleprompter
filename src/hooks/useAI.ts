@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { generateIndustryScript, type GeneratedContent } from '../services/geminiService';
 
 export interface HistoryItem extends GeneratedContent {
@@ -11,20 +11,17 @@ export interface ToastFn {
   (type: 'success' | 'error' | 'info', message: string): void;
 }
 
-// ── localStorage fallback (used when user is not TikTok-authenticated) ──────
 const LS_KEY = 'televibe_history';
 const lsGet  = (): HistoryItem[] => { try { const s = localStorage.getItem(LS_KEY); return s ? JSON.parse(s) : []; } catch { return []; } };
-const lsSet  = (items: HistoryItem[]) => { try { localStorage.setItem(LS_KEY, JSON.stringify(items)); } catch { /* ignore */ } };
+const lsSet  = (items: HistoryItem[]) => { try { localStorage.setItem(LS_KEY, JSON.stringify(items)); } catch {} };
 
 async function serverGet(): Promise<HistoryItem[] | null> {
   try {
     const res = await fetch('/api/history', { credentials: 'include' });
-    if (res.status === 401) return null;  // not authenticated — use localStorage
+    if (res.status === 401) return null;
     if (!res.ok) return null;
     return await res.json();
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 async function serverAdd(item: HistoryItem): Promise<HistoryItem[] | null> {
@@ -37,9 +34,7 @@ async function serverAdd(item: HistoryItem): Promise<HistoryItem[] | null> {
     });
     if (!res.ok) return null;
     return await res.json();
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 async function serverDelete(id: string): Promise<HistoryItem[] | null> {
@@ -50,18 +45,18 @@ async function serverDelete(id: string): Promise<HistoryItem[] | null> {
     });
     if (!res.ok) return null;
     return await res.json();
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 export function useAI(showToast: ToastFn) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [history, setHistory]           = useState<HistoryItem[]>([]);
-  // null = auth check in-flight; true = server; false = localStorage
   const [useServer, setUseServer]       = useState<boolean | null>(null);
 
-  // On mount: try server first, fall back to localStorage
+  // ── FIX 4: ref so addItem/deleteItem always read latest value, no stale closure ──
+  const useServerRef = useRef<boolean | null>(null);
+  useEffect(() => { useServerRef.current = useServer; }, [useServer]);
+
   useEffect(() => {
     let cancelled = false;
     serverGet().then(items => {
@@ -78,49 +73,39 @@ export function useAI(showToast: ToastFn) {
   }, []);
 
   const addItem = useCallback(async (item: HistoryItem) => {
-    // useServer === null means the auth check is still in-flight.
-    // Wait for it to resolve by queuing a direct server attempt;
-    // if that also returns null (unauthed), fall through to localStorage.
-    if (useServer === null) {
+    const serverMode = useServerRef.current;
+
+    if (serverMode === true || serverMode === null) {
       const updated = await serverAdd(item);
       if (updated) {
-        // Auth check will land shortly and set useServer:true — history already on server
         setHistory(updated);
         return;
       }
-      // Not authed — write to localStorage; auth check will set useServer:false
-      setHistory(prev => {
-        const next = [item, ...prev].slice(0, 20);
-        lsSet(next);
-        return next;
-      });
-      return;
     }
-
-    if (useServer) {
-      const updated = await serverAdd(item);
-      if (updated) { setHistory(updated); return; }
-      // server call failed — fall back silently
-    }
-    // localStorage path
+    // localStorage fallback
     setHistory(prev => {
       const next = [item, ...prev].slice(0, 20);
       lsSet(next);
       return next;
     });
-  }, [useServer]);
+  }, []); // no deps — reads live value from ref
 
   const deleteHistoryItem = useCallback(async (id: string) => {
-    if (useServer === null || useServer) {
+    const serverMode = useServerRef.current;
+
+    if (serverMode === true || serverMode === null) {
       const updated = await serverDelete(id);
-      if (updated) { setHistory(updated); return; }
+      if (updated) {
+        setHistory(updated);
+        return;
+      }
     }
     setHistory(prev => {
       const next = prev.filter(i => i.id !== id);
       lsSet(next);
       return next;
     });
-  }, [useServer]);
+  }, []); // no deps — reads live value from ref
 
   const generate = useCallback(async (
     topic: string,
@@ -130,7 +115,6 @@ export function useAI(showToast: ToastFn) {
     try {
       const result = await generateIndustryScript(topic || undefined);
       onSuccess(result.script, result.caption);
-
       const newItem: HistoryItem = {
         ...result,
         id:        Math.random().toString(36).substring(2, 9),

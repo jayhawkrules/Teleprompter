@@ -2,11 +2,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Button } from '@/components/ui/button';
 import { Video, Share2, Download, RefreshCw } from 'lucide-react';
-
-interface TikTokUser {
-  display_name: string;
-  avatar_url: string;
-}
+import type { TikTokUser } from '../hooks/useTikTok';
 
 interface Props {
   blob: Blob;

@@ -21,28 +21,31 @@ import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
   // ── UI state ──────────────────────────────────────────────────────────────
-  const [script, setScript]         = useState("Welcome to TeleVibe! Paste your script here. This app will track your voice and scroll automatically as you speak. Perfect for TikTok, Reels, and YouTube Shorts. Try it out now!");
-  const [caption, setCaption]       = useState('');
-  const [aiTopic, setAiTopic]       = useState('');
-  const [isRecording, setIsRecording] = useState(false);
-  const [isLive, setIsLive]         = useState(false);
+  const [script, setScript]             = useState("Welcome to TeleVibe! Paste your script here. This app will track your voice and scroll automatically as you speak. Perfect for TikTok, Reels, and YouTube Shorts. Try it out now!");
+  const [caption, setCaption]           = useState('');
+  const [aiTopic, setAiTopic]           = useState('');
+  const [isRecording, setIsRecording]   = useState(false);
+  const [isLive, setIsLive]             = useState(false);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
-  const [fontSize, setFontSize]     = useState(32);
-  const [scrollSpeed, setScrollSpeed] = useState(20);
-  const [opacity, setOpacity]       = useState(40);
+  const [fontSize, setFontSize]         = useState(32);
+  const [scrollSpeed, setScrollSpeed]   = useState(20);
+  const [opacity, setOpacity]           = useState(40);
   const [isVoiceActive, setIsVoiceActive] = useState(true);
-  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
-  const [toasts, setToasts]         = useState<Toast[]>([]);
+  const [copyStatus, setCopyStatus]     = useState<'idle' | 'copied'>('idle');
+  const [toasts, setToasts]             = useState<Toast[]>([]);
 
   const effectiveCaption = caption.trim() || script.slice(0, 150);
 
-  // ── Toast helpers ──────────────────────────────────────────────────────────
-  const showToast = (type: Toast['type'], message: string) => {
+  // ── FIX 3: stable showToast reference via useCallback ────────────────────
+  const showToast = useCallback((type: Toast['type'], message: string) => {
     const id = Math.random().toString(36).substring(2, 9);
     setToasts(prev => [...prev, { id, type, message }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
-  };
-  const dismissToast = (id: string) => setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
 
   // ── Hooks ─────────────────────────────────────────────────────────────────
   const { tiktokUser, tiktokLoading, isPosting, connect, logout, postVideo } = useTikTok(showToast);
@@ -54,25 +57,25 @@ export default function App() {
     setIsRecording(false);
   }, []);
 
-  const handleGenerate = () =>
+  const handleGenerate = useCallback(() =>
     generate(aiTopic, (newScript, newCaption) => {
       setScript(newScript);
       setCaption(newCaption);
-    });
+    }), [generate, aiTopic]);
 
-  const handleLoadHistory = (item: { script: string; caption: string }) => {
+  const handleLoadHistory = useCallback((item: { script: string; caption: string }) => {
     setScript(item.script);
     setCaption(item.caption);
     showToast('info', 'Script loaded from history');
-  };
+  }, [showToast]);
 
-  const handlePostToTikTok = async () => {
+  const handlePostToTikTok = useCallback(async () => {
     if (!recordedBlob) return;
     const ok = await postVideo(recordedBlob, effectiveCaption);
     if (ok) setRecordedBlob(null);
-  };
+  }, [recordedBlob, effectiveCaption, postVideo]);
 
-  const downloadVideo = () => {
+  const downloadVideo = useCallback(() => {
     if (!recordedBlob) return;
     const url = URL.createObjectURL(recordedBlob);
     const a   = document.createElement('a');
@@ -80,13 +83,13 @@ export default function App() {
     a.download = `televibe-recording-${Date.now()}.webm`;
     a.click();
     URL.revokeObjectURL(url);
-  };
+  }, [recordedBlob]);
 
-  const copyCaption = () => {
+  const copyCaption = useCallback(() => {
     navigator.clipboard.writeText(effectiveCaption);
     setCopyStatus('copied');
     setTimeout(() => setCopyStatus('idle'), 2000);
-  };
+  }, [effectiveCaption]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -119,7 +122,7 @@ export default function App() {
             <div className="p-6 space-y-8">
               <Tabs defaultValue="script" className="w-full">
                 <TabsList className="w-full bg-zinc-900 border border-zinc-800 p-1">
-                  <TabsTrigger value="script"   className="flex-1 gap-2 text-zinc-400 data-[state=active]:text-zinc-100"><FileText   className="w-4 h-4" /> Script</TabsTrigger>
+                  <TabsTrigger value="script"   className="flex-1 gap-2 text-zinc-400 data-[state=active]:text-zinc-100"><FileText    className="w-4 h-4" /> Script</TabsTrigger>
                   <TabsTrigger value="history"  className="flex-1 gap-2 text-zinc-400 data-[state=active]:text-zinc-100"><HistoryIcon className="w-4 h-4" /> History</TabsTrigger>
                   <TabsTrigger value="settings" className="flex-1 gap-2 text-zinc-400 data-[state=active]:text-zinc-100"><Settings   className="w-4 h-4" /> Style</TabsTrigger>
                   <TabsTrigger value="tiktok"   className="flex-1 gap-2 text-zinc-400 data-[state=active]:text-zinc-100"><Share2     className="w-4 h-4" /> TikTok</TabsTrigger>

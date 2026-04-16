@@ -43,8 +43,6 @@ export function Teleprompter({
   // Auto-scroll — slow, smooth
   useEffect(() => {
     if (!isAutoScroll || isVoiceActive || isPaused) return;
-    // scrollSpeed 1-100, we want ~8-80 px/sec
-    // at 60fps: px per frame = (scrollSpeed * 0.8) / 60
     const pxPerFrame = (scrollSpeed * 0.8) / 60;
     const interval = setInterval(() => {
       setScrollPos(prev => prev + pxPerFrame);
@@ -62,13 +60,12 @@ export function Teleprompter({
   return (
     <div
       ref={containerRef}
-      onClick={handleTap}
-      className="absolute inset-0 z-20 flex flex-col items-center justify-center p-8 cursor-pointer select-none"
+      className="absolute inset-0 z-20 flex flex-col items-center justify-center p-8 select-none pointer-events-none"
       style={{ backgroundColor: `rgba(0, 0, 0, ${opacity / 100})` }}
     >
       {/* Tap to pause hint */}
       {showPauseHint && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 bg-black/70 rounded-full border border-white/20 transition-opacity z-30">
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 bg-black/70 rounded-full border border-white/20 transition-opacity z-30 pointer-events-none">
           {isPaused
             ? <><Play className="w-3 h-3 text-white" /><span className="text-[10px] text-white font-medium">Tap to resume</span></>
             : <><Pause className="w-3 h-3 text-white" /><span className="text-[10px] text-white font-medium">Tap to pause</span></>
@@ -78,13 +75,16 @@ export function Teleprompter({
 
       {/* Paused badge */}
       {isPaused && !showPauseHint && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 bg-black/70 rounded-full border border-white/20 z-30">
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 bg-black/70 rounded-full border border-white/20 z-30 pointer-events-none">
           <Pause className="w-3 h-3 text-white" />
           <span className="text-[10px] text-white font-medium">Paused</span>
         </div>
       )}
 
-      <div className="w-full max-w-md h-full overflow-hidden relative pointer-events-none">
+      <div
+        onClick={handleTap}
+        className="w-full max-w-md h-full overflow-hidden relative pointer-events-auto cursor-pointer"
+      >
         {/* Reading line highlight */}
         <div className="absolute top-1/3 left-0 right-0 h-20 border-y border-white/20 z-20 bg-white/5" />
         <motion.div

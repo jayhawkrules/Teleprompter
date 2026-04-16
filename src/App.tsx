@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import { CameraPreview } from './components/CameraPreview';
 import { Teleprompter } from './components/Teleprompter';
 import { ScriptTab } from './components/tabs/ScriptTab';
@@ -10,33 +10,30 @@ import { ToastStack, type Toast } from './components/ToastStack';
 import { useTikTok } from './hooks/useTikTok';
 import { useAI } from './hooks/useAI';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-  Settings, Play, Square, Download, Zap,
+  Settings, Play, Square, Zap,
   ChevronRight, Video, FileText,
   History as HistoryIcon, Share2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
-  // ── UI state ──────────────────────────────────────────────────────────────
-  const [script, setScript]             = useState("Welcome to TeleVibe! Paste your script here. This app will track your voice and scroll automatically as you speak. Perfect for TikTok, Reels, and YouTube Shorts. Try it out now!");
-  const [caption, setCaption]           = useState('');
-  const [aiTopic, setAiTopic]           = useState('');
-  const [isRecording, setIsRecording]   = useState(false);
-  const [isLive, setIsLive]             = useState(false);
-  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
-  const [fontSize, setFontSize]         = useState(32);
-  const [scrollSpeed, setScrollSpeed]   = useState(20);
-  const [opacity, setOpacity]           = useState(40);
+  const [script, setScript]               = useState("Welcome to TeleVibe! Paste your script here. This app will track your voice and scroll automatically as you speak. Perfect for TikTok, Reels, and YouTube Shorts. Try it out now!");
+  const [caption, setCaption]             = useState('');
+  const [aiTopic, setAiTopic]             = useState('');
+  const [isRecording, setIsRecording]     = useState(false);
+  const [isLive, setIsLive]               = useState(false);
+  const [recordedBlob, setRecordedBlob]   = useState<Blob | null>(null);
+  const [fontSize, setFontSize]           = useState(32);
+  const [scrollSpeed, setScrollSpeed]     = useState(20);
+  const [opacity, setOpacity]             = useState(40);
   const [isVoiceActive, setIsVoiceActive] = useState(false);
-  const [copyStatus, setCopyStatus]     = useState<'idle' | 'copied'>('idle');
-  const [toasts, setToasts]             = useState<Toast[]>([]);
+  const [copyStatus, setCopyStatus]       = useState<'idle' | 'copied'>('idle');
+  const [toasts, setToasts]               = useState<Toast[]>([]);
 
   const effectiveCaption = caption.trim() || script.slice(0, 150);
 
-  // ── FIX 3: stable showToast reference via useCallback ────────────────────
   const showToast = useCallback((type: Toast['type'], message: string) => {
     const id = Math.random().toString(36).substring(2, 9);
     setToasts(prev => [...prev, { id, type, message }]);
@@ -47,11 +44,9 @@ export default function App() {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
-  // ── Hooks ─────────────────────────────────────────────────────────────────
   const { tiktokUser, tiktokLoading, isPosting, connect, logout, postVideo } = useTikTok(showToast);
   const { isGenerating, history, generate, deleteHistoryItem } = useAI(showToast);
 
-  // ── Handlers ─────────────────────────────────────────────────────────────
   const handleRecordingComplete = useCallback((blob: Blob) => {
     setRecordedBlob(blob);
     setIsRecording(false);
@@ -91,16 +86,17 @@ export default function App() {
     setTimeout(() => setCopyStatus('idle'), 2000);
   }, [effectiveCaption]);
 
-  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-zinc-100 font-sans selection:bg-zinc-700">
-      <div className="max-w-7xl mx-auto h-screen flex flex-col md:flex-row overflow-hidden">
+    <div className="bg-[#0a0a0a] text-zinc-100 font-sans selection:bg-zinc-700" style={{ height: '100dvh', display: 'flex', flexDirection: 'column' }}>
+      <div className="max-w-7xl mx-auto w-full flex flex-col md:flex-row" style={{ flex: 1, minHeight: 0 }}>
 
-        {/* Left Sidebar */}
-        <div className="w-full md:w-[400px] bg-[#111111] border-r border-zinc-800 flex flex-col h-full">
-
-          {/* Header */}
-          <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
+        {/* ── Left Sidebar ── */}
+        <div
+          className="w-full md:w-[400px] bg-[#111111] border-r border-zinc-800 flex flex-col"
+          style={{ height: '100%', minHeight: 0 }}
+        >
+          {/* Header — fixed, never scrolls */}
+          <div className="flex-shrink-0 p-6 border-b border-zinc-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-zinc-100 rounded-lg flex items-center justify-center">
                 <Video className="w-5 h-5 text-black" />
@@ -117,8 +113,8 @@ export default function App() {
             </div>
           </div>
 
-          {/* Tabs */}
-          <ScrollArea className="flex-1">
+          {/* Scrollable tab content */}
+          <div className="flex-1 overflow-y-auto min-h-0">
             <div className="p-6 space-y-8">
               <Tabs defaultValue="script" className="w-full">
                 <TabsList className="w-full bg-zinc-900 border border-zinc-800 p-1">
@@ -168,10 +164,10 @@ export default function App() {
                 </TabsContent>
               </Tabs>
             </div>
-          </ScrollArea>
+          </div>
 
-          {/* Session controls */}
-          <div className="p-6 border-t border-zinc-800 bg-zinc-900/50">
+          {/* Session controls — always pinned to bottom, never scrolls away */}
+          <div className="flex-shrink-0 p-6 border-t border-zinc-800 bg-zinc-900/50">
             {!isLive ? (
               <Button
                 onClick={() => setIsLive(true)}
@@ -205,9 +201,9 @@ export default function App() {
           </div>
         </div>
 
-        {/* Main Preview */}
-        <div className="flex-1 relative bg-black flex items-center justify-center p-4 md:p-12 overflow-hidden">
-          <div className="aspect-[9/16] h-full max-h-[90vh] relative group">
+        {/* ── Main Preview ── */}
+        <div className="flex-1 relative bg-black flex flex-col items-center justify-center p-4 md:p-12 overflow-hidden">
+          <div className="aspect-[9/16] h-full max-h-[90vh] relative">
             <CameraPreview
               isRecording={isRecording}
               onRecordingComplete={handleRecordingComplete}
@@ -223,6 +219,24 @@ export default function App() {
                 isVoiceActive={isVoiceActive}
                 opacity={opacity}
               />
+            )}
+
+            {/* Record / Stop button on camera */}
+            {isLive && (
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50">
+                <button
+                  onClick={() => setIsRecording(!isRecording)}
+                  className={`flex items-center gap-2 px-8 py-3 rounded-full font-bold text-sm shadow-2xl transition-colors ${
+                    isRecording
+                      ? 'bg-red-600 hover:bg-red-700 text-white'
+                      : 'bg-white hover:bg-zinc-200 text-black'
+                  }`}
+                >
+                  {isRecording
+                    ? <><Square className="w-4 h-4 fill-current" /> Stop Recording</>
+                    : <><Play   className="w-4 h-4 fill-current" /> Start Recording</>}
+                </button>
+              </div>
             )}
 
             <AnimatePresence>
@@ -251,7 +265,6 @@ export default function App() {
             </AnimatePresence>
           </div>
 
-          {/* Recording ready toast */}
           <AnimatePresence>
             {recordedBlob && !isRecording && (
               <RecordingToast
@@ -266,9 +279,9 @@ export default function App() {
             )}
           </AnimatePresence>
 
-          {/* Notification toasts */}
           <ToastStack toasts={toasts} onDismiss={dismissToast} />
         </div>
+
       </div>
     </div>
   );

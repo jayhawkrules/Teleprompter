@@ -274,7 +274,7 @@ app.delete('/api/history/:id', csrfGuard, (req, res) => {
 
 // ─── TikTok Auth Routes ───────────────────────────────────────────────────────
 app.get('/auth/tiktok', (req, res) => {
-  if (!TIKTOK_CLIENT_KEY) return res.status(500.send('TikTok Client Key not configured');
+  if (!TIKTOK_CLIENT_KEY) return res.status(500).send('TikTok Client Key not configured');
   const userAgent = req.headers['user-agent'] || '';
   const isMobile  = /iPhone|iPad|iPod|Android/i.test(userAgent);
   const params = new URLSearchParams({

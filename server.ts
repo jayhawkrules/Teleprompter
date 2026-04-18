@@ -18,7 +18,7 @@ dotenv.config();
 const app  = express();
 const PORT = 3000;
 
-// ─── Multer: disk storage so video never lives in RAM ─────────────────────────
+// ─── Multer: disk storage so video never lives in RAM ────────────────────────
 const upload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, os.tmpdir()),
@@ -49,7 +49,7 @@ const EFFECTIVE_SECRET = SESSION_SECRET || 'televibe-dev-only-do-not-use-in-prod
 const AES_KEY = crypto.createHash('sha256').update(EFFECTIVE_SECRET).digest();
 const AES_ALG = 'aes-256-gcm' as const;
 
-// ─── Singleton AI client — created once at startup, not per request ───────────
+// ─── Singleton AI client — created once at startup, not per request ──────────
 const ai = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
 
 app.set('trust proxy', 1);
@@ -205,7 +205,6 @@ async function attemptTikTokPost(
 
   const { upload_url, publish_id } = initResponse.data.data;
 
-  // Stream from disk — no RAM buffer
   await axios.put(upload_url, fs.createReadStream(videoPath), {
     headers: {
       'Content-Type':   mimeType,
@@ -220,7 +219,7 @@ async function attemptTikTokPost(
   return publish_id;
 }
 
-// ─── Health endpoint — exposes memory usage for Render monitoring ─────────────
+// ─── Health endpoint ──────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => {
   const mem = process.memoryUsage();
   res.json({
@@ -242,6 +241,18 @@ app.post('/api/generate-script', scriptRateLimit, async (req, res) => {
 
   const { topic } = req.body;
 
+  // Rotating hook styles — the opening line must stop the scroll in under 3 seconds
+  const hookStyles = [
+    'a bold, specific claim that most people in the industry would argue with',
+    'a shocking or counterintuitive stat that reframes how the viewer sees the topic',
+    'a direct question fired straight at the viewer that they genuinely cannot answer without watching',
+    'a short provocative statement that sounds almost too controversial to be true — but is',
+    'an "I just found out" opener about something that genuinely surprised you',
+    'a "nobody talks about this but..." reveal about something hiding in plain sight',
+    'a rapid prediction: one sentence that tells them exactly what is about to change and why it matters to them',
+    'a myth-bust opener: name the thing everyone believes, then immediately say it is wrong',
+  ];
+
   const angles = [
     'a hot take or unpopular opinion',
     "a surprising industry stat or fun fact most people don't know",
@@ -252,32 +263,58 @@ app.post('/api/generate-script', scriptRateLimit, async (req, res) => {
     'something that genuinely surprised you recently',
     "a question you've been curious about and want your audience's thoughts on",
   ];
-  const angle = angles[Math.floor(Math.random() * angles.length)];
+
+  const hookStyle = hookStyles[Math.floor(Math.random() * hookStyles.length)];
+  const angle     = angles[Math.floor(Math.random() * angles.length)];
 
   const topicContext = topic
     ? `The topic is: "${topic}".`
     : `Pick a genuinely interesting, specific angle on the film, TV, or entertainment industry — streaming, documentaries, music films, reality TV, Hollywood business, or content creation. Be specific, not generic.`;
 
   const prompt = `
-You are writing a short TikTok script for a film and TV industry professional talking directly to their followers.
+You are writing a short TikTok script for a film and TV industry professional talking directly to camera to their followers.
 
 ${topicContext}
 
-Angle to use: ${angle}
+Angle to explore: ${angle}
 
-Rules:
-- Tone: completely conversational, like you're catching up with a friend. Off the cuff, not scripted-sounding.
-- Use natural openers like "OK so I was just reading...", "Honestly this caught me off guard...", "Can we talk about...", "I've been thinking about this a lot lately..."
-- Include a genuine question for the audience at the end — something you actually want their opinion on.
-- NO bullet points, NO headers, NO lists. Just flowing spoken sentences.
-- Length: 45–65 seconds when spoken aloud (roughly 120–160 words).
-- Sound like a real person updating their followers, NOT a news anchor or press release.
-- Include one specific detail, stat, name, or example to make it feel real and current.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CRITICAL — THE HOOK (first 1–2 sentences):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The very first sentence must be a PATTERN INTERRUPT that stops the scroll dead within 3 seconds.
+Hook style to use: ${hookStyle}
 
-Also write a TikTok caption:
-- Punchy opening line (no emoji at start)
-- Conversational, not corporate
-- 5–8 relevant hashtags at the end
+Hook rules:
+- Maximum 15 words for the opening sentence.
+- Must work as a standalone grabber BEFORE any context or explanation is given.
+- Do NOT start with "So", "Hey", "OK so", "Welcome" or any warm-up filler.
+- Do NOT start by introducing yourself or the topic gently.
+- The viewer must feel an immediate need to know what comes next.
+- Think: if someone saw only this first sentence as a subtitle while scrolling, would they stop? If not, rewrite it.
+
+Good hook examples (style, not to copy verbatim):
+- "Netflix just quietly killed the one metric that made or broke careers."
+- "Every streaming deal you've signed in the last two years has the same hidden clause."
+- "The documentary that took three years to make got buried because of one algorithm tweak."
+- "Most producers are pitching to the wrong room and don't even know it."
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+THE REST OF THE SCRIPT:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- After the hook, shift to a completely conversational tone — like you're catching up with a friend.
+- Deliver on the promise of the hook. Don't bait-and-switch.
+- Include one specific detail, stat, name, or real example to make it feel credible and current.
+- End with a genuine question for the audience — something you actually want their opinion on.
+- NO bullet points, NO headers, NO lists. Flowing spoken sentences only.
+- Total length: 45–65 seconds when spoken aloud (roughly 120–160 words including the hook).
+- Sound like a real industry insider, not a press release.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CAPTION:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- First line must mirror the energy of the hook — punchy, no emoji at the start.
+- Conversational, not corporate.
+- 5–8 relevant hashtags at the end.
 
 Return ONLY valid JSON: { "script": "...", "caption": "..." }`;
 
@@ -467,7 +504,6 @@ app.post('/api/tiktok/post', csrfGuard, upload.single('video'), async (req, res)
   const videoFile   = req.file;
   if (!videoFile) return res.status(400).json({ error: 'No video provided' });
 
-  // Always clean up the temp file, even on error
   try {
     const publish_id = await attemptTikTokPost(
       access_token,
@@ -509,7 +545,6 @@ app.post('/api/tiktok/post', csrfGuard, upload.single('video'), async (req, res)
     const message = tikTokError?.error?.message || tikTokError?.error || error.message || 'Unknown error';
     res.status(500).json({ error: `TikTok API error: ${message}`, detail: tikTokError });
   } finally {
-    // Delete temp file from disk regardless of success or failure
     fs.unlink(videoFile.path, (err) => {
       if (err) console.warn('[TikTok Post] Failed to delete temp file:', videoFile.path, err.message);
       else console.log('[TikTok Post] Temp file deleted:', videoFile.path);

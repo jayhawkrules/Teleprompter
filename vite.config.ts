@@ -5,6 +5,12 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  define: {
+    // Bake version + build timestamp into the bundle at build time.
+    // Accessed in src/version.ts via the __APP_VERSION__ / __APP_BUILD_DATE__ globals.
+    __APP_VERSION__:   JSON.stringify(process.env.npm_package_version ?? '1.0.1'),
+    __APP_BUILD_DATE__: JSON.stringify(new Date().toISOString()),
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, '.'),

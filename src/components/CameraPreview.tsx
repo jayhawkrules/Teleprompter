@@ -4,7 +4,7 @@ import { Camera, Video, RefreshCw, Settings2, Square, ChevronDown } from 'lucide
 
 interface CameraPreviewProps {
   isRecording: boolean;
-  onRecordingComplete: (blob: Blob) => void;
+  onRecordingComplete: (blob: Blob, mimeType: string) => void;
   onStopRecording: () => void;
 }
 
@@ -12,6 +12,7 @@ export function CameraPreview({ isRecording, onRecordingComplete, onStopRecordin
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const mimeTypeRef = useRef<string>('');
   const [error, setError] = useState<string | null>(null);
   const [permissionStatus, setPermissionStatus] = useState<PermissionState | null>(null);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
@@ -22,7 +23,6 @@ export function CameraPreview({ isRecording, onRecordingComplete, onStopRecordin
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
 
-  // Close settings when clicking outside
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
@@ -169,23 +169,39 @@ export function CameraPreview({ isRecording, onRecordingComplete, onStopRecordin
     }
   }, [isRecording]);
 
+  const getSupportedMimeType = (): string => {
+    // Prefer mp4 first — required for iOS Safari which does not support WebM.
+    // Chrome/Firefox will fall through to webm.
+    const types = [
+      'video/mp4;codecs=avc1,mp4a.40.2',
+      'video/mp4',
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm',
+    ];
+    return types.find(type => MediaRecorder.isTypeSupported(type)) ?? '';
+  };
+
   const startRecording = () => {
     if (!videoRef.current?.srcObject) return;
-    const getSupportedMimeType = () => {
-      const types = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
-      return types.find(type => MediaRecorder.isTypeSupported(type)) || '';
-    };
     const stream = videoRef.current.srcObject as MediaStream;
     const mimeType = getSupportedMimeType();
+    mimeTypeRef.current = mimeType || 'video/webm';
+
     const mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+
     mediaRecorder.ondataavailable = (event) => {
       if (event.data.size > 0) chunksRef.current.push(event.data);
     };
+
     mediaRecorder.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: 'video/webm' });
-      onRecordingComplete(blob);
+      // Use the actual mimeType the recorder used — never hardcode video/webm
+      const actualMime = mimeTypeRef.current;
+      const blob = new Blob(chunksRef.current, { type: actualMime });
+      onRecordingComplete(blob, actualMime);
       chunksRef.current = [];
     };
+
     mediaRecorderRef.current = mediaRecorder;
     mediaRecorder.start();
   };
@@ -209,7 +225,6 @@ export function CameraPreview({ isRecording, onRecordingComplete, onStopRecordin
         style={{ transform: 'scaleX(-1)' }}
       />
 
-      {/* Camera standby */}
       {!isCameraActive && !error && (
         <div className="absolute inset-0 bg-zinc-900 flex flex-col items-center justify-center p-8 text-center z-40">
           <div className="w-16 h-16 bg-zinc-800 rounded-2xl flex items-center justify-center mb-6">
@@ -228,7 +243,6 @@ export function CameraPreview({ isRecording, onRecordingComplete, onStopRecordin
         </div>
       )}
 
-      {/* Error screen */}
       {error && (
         <div className="absolute inset-0 bg-zinc-900/95 backdrop-blur-xl flex flex-col items-center justify-center p-8 text-center z-50">
           <div className="w-16 h-16 bg-red-500/20 rounded-2xl flex items-center justify-center mb-6">
@@ -281,7 +295,6 @@ export function CameraPreview({ isRecording, onRecordingComplete, onStopRecordin
         </div>
       )}
 
-      {/* REC indicator + Stop button — always on top */}
       {isRecording && (
         <div className="absolute top-4 right-4 flex items-center gap-2" style={{ zIndex: 9999 }}>
           <div className="flex items-center gap-2 px-3 py-1.5 bg-red-600 rounded-full animate-pulse">
@@ -298,7 +311,6 @@ export function CameraPreview({ isRecording, onRecordingComplete, onStopRecordin
         </div>
       )}
 
-      {/* Custom settings dropdown — no Base UI dependency */}
       {!error && (
         <div ref={settingsRef} className="absolute top-4 left-4" style={{ zIndex: 9999 }}>
           <button

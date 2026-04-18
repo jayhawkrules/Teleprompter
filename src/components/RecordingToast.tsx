@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import { motion } from 'motion/react';
 import { Button } from '@/components/ui/button';
 import { Video, Share2, Download, RefreshCw, Smartphone } from 'lucide-react';
@@ -6,6 +6,7 @@ import type { TikTokUser } from '../hooks/useTikTok';
 
 interface Props {
   blob: Blob;
+  mimeType: string;
   effectiveCaption: string;
   tiktokUser: TikTokUser | null;
   isPosting: boolean;
@@ -14,8 +15,18 @@ interface Props {
   onDiscard: () => void;
 }
 
+// Derive a safe file extension from the actual recorded mimeType.
+// iOS Safari records as video/mp4 — Chrome/Firefox use video/webm.
+function extFromMime(mime: string): string {
+  if (mime.startsWith('video/mp4')) return 'mp4';
+  if (mime.startsWith('video/webm')) return 'webm';
+  if (mime.startsWith('video/ogg')) return 'ogv';
+  return 'mp4'; // safe default
+}
+
 export function RecordingToast({
   blob,
+  mimeType,
   effectiveCaption,
   tiktokUser,
   isPosting,
@@ -23,16 +34,21 @@ export function RecordingToast({
   onDownload,
   onDiscard,
 }: Props) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  const ext = extFromMime(mimeType);
+  const filename = `televibe-${Date.now()}.${ext}`;
+  const formatLabel = ext.toUpperCase();
+
+  // Build a File object using the REAL mimeType from the recorder.
+  // If the mime doesn't match the actual bytes, iOS navigator.canShare returns false
+  // and the blob ends up shared as a screenshot / generic file instead of a video.
+  const buildFile = () => new File([blob], filename, { type: mimeType || blob.type });
 
   // Save video to device.
-  // On mobile: use the native share sheet so iPhone offers "Save Video" → Photos.
-  // On desktop: trigger a plain download link with .mp4 extension.
+  // On mobile: use the native share sheet — iPhone will offer "Save Video" → Photos.
+  // On desktop: trigger a plain download link.
   const handleSaveToDevice = async () => {
-    const filename = `televibe-${Date.now()}.mp4`;
-    const file = new File([blob], filename, { type: 'video/mp4' });
+    const file = buildFile();
 
     if (isMobile && navigator.canShare?.({ files: [file] })) {
       try {
@@ -47,7 +63,7 @@ export function RecordingToast({
       return;
     }
 
-    // Desktop fallback
+    // Desktop / canShare not available fallback
     const url = URL.createObjectURL(blob);
     const a   = document.createElement('a');
     a.href     = url;
@@ -58,9 +74,9 @@ export function RecordingToast({
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   };
 
-  // On mobile: trigger native share sheet so user can share directly to TikTok app
+  // Share to TikTok via native share sheet (mobile) or download (desktop)
   const handleShareToTikTok = async () => {
-    const file = new File([blob], `televibe-${Date.now()}.mp4`, { type: 'video/mp4' });
+    const file = buildFile();
     if (navigator.canShare?.({ files: [file] })) {
       try {
         await navigator.share({
@@ -72,7 +88,6 @@ export function RecordingToast({
         // User cancelled share — that's fine
       }
     } else {
-      // Desktop fallback: just download
       handleSaveToDevice();
     }
   };
@@ -83,8 +98,6 @@ export function RecordingToast({
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: 100, opacity: 0 }}
       style={{
-        // Use fixed + safe-area inset so the toast clears the Start Recording
-        // button and iPhone's bottom home indicator on all screen sizes.
         position: 'fixed',
         bottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)',
         left: '50%',
@@ -99,7 +112,7 @@ export function RecordingToast({
         <div className="min-w-0">
           <p className="text-sm font-bold">Recording Ready</p>
           <p className="text-[10px] text-zinc-500 uppercase tracking-wider">
-            {(blob.size / 1024 / 1024).toFixed(2)} MB · MP4
+            {(blob.size / 1024 / 1024).toFixed(2)} MB · {formatLabel}
           </p>
         </div>
       </div>
@@ -109,12 +122,10 @@ export function RecordingToast({
         <p className="text-xs text-zinc-300 line-clamp-2">{effectiveCaption}</p>
       </div>
 
-      {/* Action buttons */}
       <div className="flex flex-col gap-2">
 
         {/* Row 1: TikTok options */}
         <div className="flex gap-2">
-          {/* Open in TikTok app (mobile share sheet) */}
           <Button
             size="sm"
             onClick={handleShareToTikTok}
@@ -125,7 +136,6 @@ export function RecordingToast({
               : <><Share2 className="w-4 h-4 mr-2" /> Share to TikTok</>}
           </Button>
 
-          {/* Direct API post — only show if TikTok connected */}
           {tiktokUser && (
             <Button
               size="sm"

@@ -25,12 +25,33 @@ export function RecordingToast({
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Save video to device using a real download link
-  const handleSaveToDevice = () => {
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+  // Save video to device.
+  // On mobile: use the native share sheet so iPhone offers "Save Video" → Photos.
+  // On desktop: trigger a plain download link with .mp4 extension.
+  const handleSaveToDevice = async () => {
+    const filename = `televibe-${Date.now()}.mp4`;
+    const file = new File([blob], filename, { type: 'video/mp4' });
+
+    if (isMobile && navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: 'TeleVibe Recording',
+          text: effectiveCaption,
+        });
+      } catch (e) {
+        // User cancelled share — that's fine
+      }
+      return;
+    }
+
+    // Desktop fallback
     const url = URL.createObjectURL(blob);
     const a   = document.createElement('a');
     a.href     = url;
-    a.download = `televibe-${Date.now()}.webm`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -56,14 +77,20 @@ export function RecordingToast({
     }
   };
 
-  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-
   return (
     <motion.div
       initial={{ y: 100, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: 100, opacity: 0 }}
-      className="absolute bottom-12 left-1/2 -translate-x-1/2 bg-zinc-900 border border-zinc-800 p-4 rounded-2xl shadow-2xl z-50 w-[90%] max-w-md"
+      style={{
+        // Use fixed + safe-area inset so the toast clears the Start Recording
+        // button and iPhone's bottom home indicator on all screen sizes.
+        position: 'fixed',
+        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)',
+        left: '50%',
+        transform: 'translateX(-50%)',
+      }}
+      className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl shadow-2xl z-50 w-[90%] max-w-md"
     >
       <div className="flex items-center gap-3 mb-3">
         <div className="w-10 h-10 bg-green-500/20 rounded-lg flex items-center justify-center shrink-0">
@@ -72,7 +99,7 @@ export function RecordingToast({
         <div className="min-w-0">
           <p className="text-sm font-bold">Recording Ready</p>
           <p className="text-[10px] text-zinc-500 uppercase tracking-wider">
-            {(blob.size / 1024 / 1024).toFixed(2)} MB · WebM
+            {(blob.size / 1024 / 1024).toFixed(2)} MB · MP4
           </p>
         </div>
       </div>
@@ -121,7 +148,8 @@ export function RecordingToast({
             onClick={handleSaveToDevice}
             className="bg-zinc-100 text-black hover:bg-white font-bold flex-1"
           >
-            <Download className="w-4 h-4 mr-2" /> Save to Device
+            <Download className="w-4 h-4 mr-2" />
+            {isMobile ? 'Save to Photos' : 'Save to Device'}
           </Button>
 
           <Button

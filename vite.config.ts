@@ -3,12 +3,15 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig } from 'vite';
 
+const APP_VERSION = process.env.npm_package_version || '1.0.1';
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   define: {
     // Bake version + build timestamp into the bundle at build time.
-    // Accessed in src/version.ts via the __APP_VERSION__ / __APP_BUILD_DATE__ globals.
-    __APP_VERSION__:   JSON.stringify(process.env.npm_package_version ?? '1.0.1'),
+    // APP_VERSION is resolved here at config-load time so it is never
+    // the string 'undefined' even when npm_package_version is not set.
+    __APP_VERSION__:    JSON.stringify(APP_VERSION),
     __APP_BUILD_DATE__: JSON.stringify(new Date().toISOString()),
   },
   resolve: {
@@ -17,24 +20,18 @@ export default defineConfig({
     },
   },
   build: {
-    // Silence the chunk size warning — our split keeps chunks well under 600KB
     chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
         manualChunks: {
-          // React core — ~150KB
           'vendor-react': ['react', 'react-dom'],
-          // Animation — ~100KB
           'vendor-motion': ['motion'],
-          // UI primitives
           'vendor-ui': ['@base-ui/react', 'lucide-react', 'clsx', 'class-variance-authority', 'tailwind-merge'],
         },
       },
     },
   },
   server: {
-    // HMR is disabled in AI Studio via DISABLE_HMR env var.
-    // Do not modify - file watching is disabled to prevent flickering during agent edits.
     hmr: process.env.DISABLE_HMR !== 'true',
     host: true,
     allowedHosts: ['.producinghollywood.com', 'teleprompter-4rx3.onrender.com'],

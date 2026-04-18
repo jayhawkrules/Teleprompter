@@ -21,6 +21,12 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
+function extFromMime(mime: string): string {
+  if (mime.startsWith('video/mp4')) return 'mp4';
+  if (mime.startsWith('video/webm')) return 'webm';
+  return 'mp4';
+}
+
 export default function App() {
   const [script, setScript]               = useState("Welcome to TeleVibe! Paste your script here. This app will track your voice and scroll automatically as you speak. Perfect for TikTok, Reels, and YouTube Shorts. Try it out now!");
   const [caption, setCaption]             = useState('');
@@ -28,6 +34,7 @@ export default function App() {
   const [isRecording, setIsRecording]     = useState(false);
   const [isLive, setIsLive]               = useState(false);
   const [recordedBlob, setRecordedBlob]   = useState<Blob | null>(null);
+  const [recordedMimeType, setRecordedMimeType] = useState<string>('video/mp4');
   const [fontSize, setFontSize]           = useState(32);
   const [scrollSpeed, setScrollSpeed]     = useState(20);
   const [opacity, setOpacity]             = useState(40);
@@ -54,8 +61,9 @@ export default function App() {
   const { tiktokUser, tiktokLoading, isPosting, connect, logout, postVideo } = useTikTok(showToast);
   const { isGenerating, history, generate, deleteHistoryItem } = useAI(showToast);
 
-  const handleRecordingComplete = useCallback((blob: Blob) => {
+  const handleRecordingComplete = useCallback((blob: Blob, mimeType: string) => {
     setRecordedBlob(blob);
+    setRecordedMimeType(mimeType);
     setIsRecording(false);
   }, []);
 
@@ -74,18 +82,22 @@ export default function App() {
   const handlePostToTikTok = useCallback(async () => {
     if (!recordedBlob) return;
     const ok = await postVideo(recordedBlob, effectiveCaption);
-    if (ok) setRecordedBlob(null);
+    if (ok) {
+      setRecordedBlob(null);
+      setRecordedMimeType('video/mp4');
+    }
   }, [recordedBlob, effectiveCaption, postVideo]);
 
   const downloadVideo = useCallback(() => {
     if (!recordedBlob) return;
+    const ext = extFromMime(recordedMimeType);
     const url = URL.createObjectURL(recordedBlob);
     const a   = document.createElement('a');
     a.href     = url;
-    a.download = `televibe-recording-${Date.now()}.webm`;
+    a.download = `televibe-recording-${Date.now()}.${ext}`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [recordedBlob]);
+  }, [recordedBlob, recordedMimeType]);
 
   const copyCaption = useCallback(() => {
     navigator.clipboard.writeText(effectiveCaption);
@@ -104,7 +116,6 @@ export default function App() {
     setMobileCamera(true);
   }, []);
 
-  // Update banner — shown at top of sidebar when a newer version is detected
   const UpdateBanner = updateAvailable && !updateDismissed ? (
     <motion.div
       initial={{ opacity: 0, y: -8 }}
@@ -132,7 +143,6 @@ export default function App() {
     </motion.div>
   ) : null;
 
-  // Mobile fullscreen camera overlay
   const MobileCameraView = (
     <div
       className="fixed inset-0 bg-black z-50 flex flex-col"
@@ -191,12 +201,13 @@ export default function App() {
         {recordedBlob && !isRecording && (
           <RecordingToast
             blob={recordedBlob}
+            mimeType={recordedMimeType}
             effectiveCaption={effectiveCaption}
             tiktokUser={tiktokUser}
             isPosting={isPosting}
             onPost={handlePostToTikTok}
             onDownload={downloadVideo}
-            onDiscard={() => setRecordedBlob(null)}
+            onDiscard={() => { setRecordedBlob(null); setRecordedMimeType('video/mp4'); }}
           />
         )}
       </AnimatePresence>
@@ -229,10 +240,8 @@ export default function App() {
           className="w-full md:w-[400px] bg-[#111111] border-r border-zinc-800 flex flex-col"
           style={{ height: '100%', minHeight: 0 }}
         >
-          {/* Update banner */}
           <AnimatePresence>{UpdateBanner}</AnimatePresence>
 
-          {/* Header */}
           <div className="flex-shrink-0 p-6 border-b border-zinc-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-zinc-100 rounded-lg flex items-center justify-center">
@@ -253,7 +262,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Scrollable tab content */}
           <div className="flex-1 overflow-y-auto min-h-0">
             <div className="p-6 space-y-8">
               <Tabs defaultValue="script" className="w-full">
@@ -306,7 +314,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Session controls */}
           <div className="flex-shrink-0 p-6 border-t border-zinc-800 bg-zinc-900/50">
             {!isLive ? (
               <>
@@ -422,12 +429,13 @@ export default function App() {
             {recordedBlob && !isRecording && (
               <RecordingToast
                 blob={recordedBlob}
+                mimeType={recordedMimeType}
                 effectiveCaption={effectiveCaption}
                 tiktokUser={tiktokUser}
                 isPosting={isPosting}
                 onPost={handlePostToTikTok}
                 onDownload={downloadVideo}
-                onDiscard={() => setRecordedBlob(null)}
+                onDiscard={() => { setRecordedBlob(null); setRecordedMimeType('video/mp4'); }}
               />
             )}
           </AnimatePresence>

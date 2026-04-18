@@ -1,5 +1,7 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
+import os from 'os';
 import axios from 'axios';
 import multer from 'multer';
 import dotenv from 'dotenv';
@@ -13,9 +15,21 @@ import { getHistory, addHistoryItem, deleteHistoryItem } from './historyStore';
 
 dotenv.config();
 
-const app    = express();
-const PORT   = 3000;
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 150 * 1024 * 1024 } });
+const app  = express();
+const PORT = 3000;
+
+// ─── Multer: disk storage so video never lives in RAM ─────────────────────────
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, os.tmpdir()),
+    filename:    (_req, file,  cb) => {
+      const ext  = path.extname(file.originalname) || '.mp4';
+      const name = `televibe-${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`;
+      cb(null, name);
+    },
+  }),
+  limits: { fileSize: 150 * 1024 * 1024 },
+});
 
 const TIKTOK_REDIRECT_URI  = process.env.TIKTOK_REDIRECT_URI || 'https://teleprompter.producinghollywood.com/auth/tiktok/callback';
 const TIKTOK_CLIENT_KEY    = process.env.TIKTOK_CLIENT_KEY;
@@ -34,6 +48,9 @@ const EFFECTIVE_SECRET = SESSION_SECRET || 'televibe-dev-only-do-not-use-in-prod
 
 const AES_KEY = crypto.createHash('sha256').update(EFFECTIVE_SECRET).digest();
 const AES_ALG = 'aes-256-gcm' as const;
+
+// ─── Singleton AI client — created once at startup, not per request ───────────
+const ai = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
 
 app.set('trust proxy', 1);
 
@@ -153,15 +170,15 @@ async function refreshTikTokToken(
   }
 }
 
-// ─── TikTok post helper ───────────────────────────────────────────────────────
+// ─── TikTok post helper — streams from disk, never buffers in RAM ─────────────
 async function attemptTikTokPost(
   token: string,
-  videoFile: Express.Multer.File,
+  videoPath: string,
+  videoSize: number,
+  mimeType: string,
   caption: string,
 ): Promise<string> {
-  const mimeType = videoFile.mimetype || 'video/mp4';
-
-  console.log('[TikTok Post] File size:', videoFile.size, 'MIME:', mimeType);
+  console.log('[TikTok Post] File size:', videoSize, 'MIME:', mimeType);
 
   const initResponse = await axios.post(
     'https://open.tiktokapis.com/v2/post/publish/video/init/',
@@ -176,8 +193,8 @@ async function attemptTikTokPost(
       },
       source_info: {
         source:            'FILE_UPLOAD',
-        video_size:        videoFile.size,
-        chunk_size:        videoFile.size,
+        video_size:        videoSize,
+        chunk_size:        videoSize,
         total_chunk_count: 1,
       },
     },
@@ -188,11 +205,12 @@ async function attemptTikTokPost(
 
   const { upload_url, publish_id } = initResponse.data.data;
 
-  await axios.put(upload_url, videoFile.buffer, {
+  // Stream from disk — no RAM buffer
+  await axios.put(upload_url, fs.createReadStream(videoPath), {
     headers: {
       'Content-Type':   mimeType,
-      'Content-Range':  `bytes 0-${videoFile.size - 1}/${videoFile.size}`,
-      'Content-Length': videoFile.size,
+      'Content-Range':  `bytes 0-${videoSize - 1}/${videoSize}`,
+      'Content-Length': videoSize,
     },
     maxBodyLength:    Infinity,
     maxContentLength: Infinity,
@@ -202,15 +220,27 @@ async function attemptTikTokPost(
   return publish_id;
 }
 
+// ─── Health endpoint — exposes memory usage for Render monitoring ─────────────
+app.get('/api/health', (_req, res) => {
+  const mem = process.memoryUsage();
+  res.json({
+    status: 'ok',
+    memory: {
+      rss:      `${Math.round(mem.rss      / 1024 / 1024)} MB`,
+      heapUsed: `${Math.round(mem.heapUsed / 1024 / 1024)} MB`,
+      heapTotal:`${Math.round(mem.heapTotal/ 1024 / 1024)} MB`,
+    },
+  });
+});
+
 // ─── AI Script Generation ─────────────────────────────────────────────────────
 app.post('/api/generate-script', scriptRateLimit, async (req, res) => {
-  if (!GEMINI_API_KEY) {
+  if (!ai) {
     console.error('[Gemini] No API key found.');
     return res.status(500).json({ error: 'AI service not configured.' });
   }
 
   const { topic } = req.body;
-  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
   const angles = [
     'a hot take or unpopular opinion',
@@ -280,12 +310,10 @@ Return ONLY valid JSON: { "script": "...", "caption": "..." }`;
 
 // ─── Topic Similarity Check ───────────────────────────────────────────────────
 app.post('/api/check-topic-similarity', async (req, res) => {
-  if (!GEMINI_API_KEY) return res.json({ similar: false });
+  if (!ai) return res.json({ similar: false });
 
   const { newTopic, pastTopics } = req.body;
   if (!newTopic || !pastTopics) return res.json({ similar: false });
-
-  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
   const prompt = `You are checking if a new video topic overlaps with previously covered topics.
 
@@ -439,8 +467,15 @@ app.post('/api/tiktok/post', csrfGuard, upload.single('video'), async (req, res)
   const videoFile   = req.file;
   if (!videoFile) return res.status(400).json({ error: 'No video provided' });
 
+  // Always clean up the temp file, even on error
   try {
-    const publish_id = await attemptTikTokPost(access_token, videoFile, caption);
+    const publish_id = await attemptTikTokPost(
+      access_token,
+      videoFile.path,
+      videoFile.size,
+      videoFile.mimetype || 'video/mp4',
+      caption,
+    );
     res.json({ success: true, publish_id });
   } catch (error: any) {
     const tikTokError = error.response?.data;
@@ -451,7 +486,13 @@ app.post('/api/tiktok/post', csrfGuard, upload.single('video'), async (req, res)
       const newToken = await refreshTikTokToken(req, res);
       if (newToken) {
         try {
-          const publish_id = await attemptTikTokPost(newToken, videoFile, caption);
+          const publish_id = await attemptTikTokPost(
+            newToken,
+            videoFile.path,
+            videoFile.size,
+            videoFile.mimetype || 'video/mp4',
+            caption,
+          );
           return res.json({ success: true, publish_id });
         } catch (e: any) {
           const retryError = e.response?.data;
@@ -467,6 +508,12 @@ app.post('/api/tiktok/post', csrfGuard, upload.single('video'), async (req, res)
 
     const message = tikTokError?.error?.message || tikTokError?.error || error.message || 'Unknown error';
     res.status(500).json({ error: `TikTok API error: ${message}`, detail: tikTokError });
+  } finally {
+    // Delete temp file from disk regardless of success or failure
+    fs.unlink(videoFile.path, (err) => {
+      if (err) console.warn('[TikTok Post] Failed to delete temp file:', videoFile.path, err.message);
+      else console.log('[TikTok Post] Temp file deleted:', videoFile.path);
+    });
   }
 });
 

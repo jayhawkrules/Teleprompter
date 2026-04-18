@@ -116,6 +116,11 @@ export default function App() {
     setMobileCamera(true);
   }, []);
 
+  const handleDiscard = useCallback(() => {
+    setRecordedBlob(null);
+    setRecordedMimeType('video/mp4');
+  }, []);
+
   const UpdateBanner = updateAvailable && !updateDismissed ? (
     <motion.div
       initial={{ opacity: 0, y: -8 }}
@@ -142,6 +147,9 @@ export default function App() {
       </button>
     </motion.div>
   ) : null;
+
+  // True when the toast is showing — used to hide the record button so they don't overlap
+  const toastVisible = !!recordedBlob && !isRecording;
 
   const MobileCameraView = (
     <div
@@ -181,33 +189,36 @@ export default function App() {
           </button>
         </div>
 
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2" style={{ zIndex: 100 }}>
-          <button
-            onClick={() => setIsRecording(!isRecording)}
-            className={`flex items-center gap-2 px-10 py-4 rounded-full font-bold text-base shadow-2xl transition-colors ${
-              isRecording
-                ? 'bg-red-600 hover:bg-red-700 text-white'
-                : 'bg-white hover:bg-zinc-200 text-black'
-            }`}
-          >
-            {isRecording
-              ? <><Square className="w-5 h-5 fill-current" /> Stop Recording</>
-              : <><Play   className="w-5 h-5 fill-current" /> Start Recording</>}
-          </button>
-        </div>
+        {/* Only show record button when the toast is NOT visible */}
+        {!toastVisible && (
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2" style={{ zIndex: 100 }}>
+            <button
+              onClick={() => setIsRecording(!isRecording)}
+              className={`flex items-center gap-2 px-10 py-4 rounded-full font-bold text-base shadow-2xl transition-colors ${
+                isRecording
+                  ? 'bg-red-600 hover:bg-red-700 text-white'
+                  : 'bg-white hover:bg-zinc-200 text-black'
+              }`}
+            >
+              {isRecording
+                ? <><Square className="w-5 h-5 fill-current" /> Stop Recording</>
+                : <><Play   className="w-5 h-5 fill-current" /> Start Recording</>}
+            </button>
+          </div>
+        )}
       </div>
 
       <AnimatePresence>
-        {recordedBlob && !isRecording && (
+        {toastVisible && (
           <RecordingToast
-            blob={recordedBlob}
+            blob={recordedBlob!}
             mimeType={recordedMimeType}
             effectiveCaption={effectiveCaption}
             tiktokUser={tiktokUser}
             isPosting={isPosting}
             onPost={handlePostToTikTok}
             onDownload={downloadVideo}
-            onDiscard={() => { setRecordedBlob(null); setRecordedMimeType('video/mp4'); }}
+            onDiscard={handleDiscard}
           />
         )}
       </AnimatePresence>
@@ -382,7 +393,7 @@ export default function App() {
               />
             )}
 
-            {isLive && (
+            {isLive && !toastVisible && (
               <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50">
                 <button
                   onClick={() => setIsRecording(!isRecording)}
@@ -426,16 +437,16 @@ export default function App() {
           </div>
 
           <AnimatePresence>
-            {recordedBlob && !isRecording && (
+            {toastVisible && (
               <RecordingToast
-                blob={recordedBlob}
+                blob={recordedBlob!}
                 mimeType={recordedMimeType}
                 effectiveCaption={effectiveCaption}
                 tiktokUser={tiktokUser}
                 isPosting={isPosting}
                 onPost={handlePostToTikTok}
                 onDownload={downloadVideo}
-                onDiscard={() => { setRecordedBlob(null); setRecordedMimeType('video/mp4'); }}
+                onDiscard={handleDiscard}
               />
             )}
           </AnimatePresence>

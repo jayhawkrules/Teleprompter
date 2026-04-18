@@ -9,12 +9,15 @@ import { RecordingToast } from './components/RecordingToast';
 import { ToastStack, type Toast } from './components/ToastStack';
 import { useTikTok } from './hooks/useTikTok';
 import { useAI } from './hooks/useAI';
+import { useAppUpdate } from './hooks/useAppUpdate';
+import { formatVersion } from './version';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Settings, Play, Square, Zap,
   ChevronRight, Video, FileText,
-  History as HistoryIcon, Share2, ChevronLeft
+  History as HistoryIcon, Share2, ChevronLeft,
+  RefreshCw, X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -31,10 +34,12 @@ export default function App() {
   const [isVoiceActive, setIsVoiceActive] = useState(false);
   const [copyStatus, setCopyStatus]       = useState<'idle' | 'copied'>('idle');
   const [toasts, setToasts]               = useState<Toast[]>([]);
-  // Mobile: track whether we're in the fullscreen camera view
   const [mobileCamera, setMobileCamera]   = useState(false);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
 
   const effectiveCaption = caption.trim() || script.slice(0, 150);
+
+  const { updateAvailable, latestVersion, refresh } = useAppUpdate();
 
   const showToast = useCallback((type: Toast['type'], message: string) => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -94,11 +99,38 @@ export default function App() {
     setMobileCamera(false);
   }, [isRecording]);
 
-  // On mobile, when user clicks Start Session → go straight to camera
   const handleStartSession = useCallback(() => {
     setIsLive(true);
     setMobileCamera(true);
   }, []);
+
+  // Update banner — shown at top of sidebar when a newer version is detected
+  const UpdateBanner = updateAvailable && !updateDismissed ? (
+    <motion.div
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+      className="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 bg-amber-500/10 border-b border-amber-500/20 text-amber-400"
+    >
+      <RefreshCw className="w-3.5 h-3.5 shrink-0" />
+      <span className="text-[11px] font-medium flex-1">
+        Update available{latestVersion ? ` (v${latestVersion})` : ''} — tap to reload
+      </span>
+      <button
+        onClick={refresh}
+        className="text-[11px] font-bold underline underline-offset-2 hover:text-amber-300 transition-colors"
+      >
+        Update
+      </button>
+      <button
+        onClick={() => setUpdateDismissed(true)}
+        className="ml-1 text-amber-500/60 hover:text-amber-400 transition-colors"
+        aria-label="Dismiss update notification"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </motion.div>
+  ) : null;
 
   // Mobile fullscreen camera overlay
   const MobileCameraView = (
@@ -106,7 +138,6 @@ export default function App() {
       className="fixed inset-0 bg-black z-50 flex flex-col"
       style={{ height: '100dvh' }}
     >
-      {/* Full-bleed camera */}
       <div className="relative flex-1 overflow-hidden">
         <CameraPreview
           isRecording={isRecording}
@@ -114,7 +145,6 @@ export default function App() {
           onStopRecording={() => setIsRecording(false)}
         />
 
-        {/* Teleprompter overlay */}
         {isLive && (
           <Teleprompter
             text={script}
@@ -126,7 +156,6 @@ export default function App() {
           />
         )}
 
-        {/* Top bar: back button */}
         <div className="absolute top-4 left-4 right-4 flex items-center justify-between" style={{ zIndex: 100 }}>
           <button
             onClick={() => setMobileCamera(false)}
@@ -134,8 +163,6 @@ export default function App() {
           >
             <ChevronLeft className="w-4 h-4" /> Back
           </button>
-
-          {/* Exit session button */}
           <button
             onClick={handleExitSession}
             className="px-3 py-2 bg-black/50 backdrop-blur-md border border-zinc-700 rounded-full text-xs font-bold text-zinc-300"
@@ -144,7 +171,6 @@ export default function App() {
           </button>
         </div>
 
-        {/* Record / Stop button */}
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2" style={{ zIndex: 100 }}>
           <button
             onClick={() => setIsRecording(!isRecording)}
@@ -161,7 +187,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* Recording toast inside mobile camera view */}
       <AnimatePresence>
         {recordedBlob && !isRecording && (
           <RecordingToast
@@ -183,7 +208,6 @@ export default function App() {
   return (
     <div className="bg-[#0a0a0a] text-zinc-100 font-sans selection:bg-zinc-700" style={{ height: '100dvh', display: 'flex', flexDirection: 'column' }}>
 
-      {/* Mobile camera fullscreen — rendered as portal-like fixed overlay */}
       <AnimatePresence>
         {mobileCamera && (
           <motion.div
@@ -205,13 +229,19 @@ export default function App() {
           className="w-full md:w-[400px] bg-[#111111] border-r border-zinc-800 flex flex-col"
           style={{ height: '100%', minHeight: 0 }}
         >
+          {/* Update banner */}
+          <AnimatePresence>{UpdateBanner}</AnimatePresence>
+
           {/* Header */}
           <div className="flex-shrink-0 p-6 border-b border-zinc-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-zinc-100 rounded-lg flex items-center justify-center">
                 <Video className="w-5 h-5 text-black" />
               </div>
-              <h1 className="text-xl font-bold tracking-tight">TeleVibe</h1>
+              <div>
+                <h1 className="text-xl font-bold tracking-tight leading-none">TeleVibe</h1>
+                <p className="text-[10px] text-zinc-600 font-mono mt-0.5 leading-none">{formatVersion()}</p>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <div className={`w-2 h-2 rounded-full ${
@@ -280,14 +310,12 @@ export default function App() {
           <div className="flex-shrink-0 p-6 border-t border-zinc-800 bg-zinc-900/50">
             {!isLive ? (
               <>
-                {/* Desktop: Start Session normally */}
                 <Button
                   onClick={() => setIsLive(true)}
                   className="hidden md:flex w-full h-14 bg-zinc-100 text-black hover:bg-white rounded-xl font-bold text-lg shadow-xl shadow-white/5 items-center justify-center"
                 >
                   Start Session
                 </Button>
-                {/* Mobile: Start Session → jump straight to camera */}
                 <Button
                   onClick={handleStartSession}
                   className="flex md:hidden w-full h-14 bg-zinc-100 text-black hover:bg-white rounded-xl font-bold text-lg shadow-xl shadow-white/5 items-center justify-center gap-2"
@@ -304,7 +332,6 @@ export default function App() {
                 >
                   Exit
                 </Button>
-                {/* Desktop record button */}
                 <Button
                   onClick={() => setIsRecording(!isRecording)}
                   className={`hidden md:flex h-14 rounded-xl font-bold text-lg shadow-lg items-center justify-center ${
@@ -317,7 +344,6 @@ export default function App() {
                     ? <><Square className="w-5 h-5 mr-2 fill-current" /> Stop</>
                     : <><Play   className="w-5 h-5 mr-2 fill-current" /> Record</>}
                 </Button>
-                {/* Mobile: return to camera */}
                 <Button
                   onClick={() => setMobileCamera(true)}
                   className="flex md:hidden h-14 rounded-xl font-bold text-lg shadow-lg bg-zinc-100 text-black hover:bg-white shadow-white/5 items-center justify-center gap-2"
@@ -349,7 +375,6 @@ export default function App() {
               />
             )}
 
-            {/* Record / Stop button on camera */}
             {isLive && (
               <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50">
                 <button

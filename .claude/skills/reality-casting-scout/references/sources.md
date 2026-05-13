@@ -12,7 +12,7 @@
 2. **Network sites need a real browser.** ABC / NBC / Bravo / Discovery / etc. have all moved to client-rendered SPAs. The `engine: "requests"` HTML scraper sees an empty shell. v2 adds `engine: "playwright"` for these.
 3. **Polite-but-realistic headers.** A `MythieCastingScout/1.0 (+https://mythie.app/bot)` UA was honest but invited the 403 we saw from Discovery. Rotate among real Chrome UAs and the `Accept-Language: en-US,en;q=0.9` header — same posture a real visitor sends.
 4. **Each source declares whether it's known-working.** A `status` column marks `working` / `verify` / `dead` / `js-required`. The scraper logs the status alongside the listing count so the operator sees decay before listings disappear.
-5. **RSS where it exists.** Several aggregators publish RSS feeds — much cheaper than HTML scraping and stable when the page layout changes.
+5. **RSS where it exists.** Several aggregators publish RSS feeds — much cheaper than HTML scraping and stable when the page layout changes. v2 ships `engine: "rss"` (feedparser-backed) and three Tier-2 RSS sources (Project Casting, Backstage, Auditions Free). Always prefer RSS when a feed is available — when the next audit cycle finds new feeds, add them alongside the HTML rows; the dedup pass in step 2 of the pipeline collapses duplicates by `applyUrl`.
 
 ---
 

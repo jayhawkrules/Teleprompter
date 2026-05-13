@@ -75,6 +75,10 @@ class RawListing:
 # Per-source: (tier, name, url, parser_name, engine, status)
 #   engine: "requests" — plain HTTP fetch + BeautifulSoup
 #           "playwright" — headless browser (only runs when --with-playwright)
+#           "rss"        — feedparser-backed RSS/Atom feed reader. Cheapest
+#                          and most stable engine — when a source publishes
+#                          a feed, we should always prefer it over the
+#                          HTML scrape. Requires `pip install feedparser`.
 #   status: "working" | "verify" | "dead" | "js-required"
 # See references/sources.md for the audit that produced these values.
 SOURCES = [
@@ -106,6 +110,19 @@ SOURCES = [
     (3, "castlyst",            "https://castlyst.com/casting-calls",       "parse_generic_aggregator", "requests", "verify"),
     (3, "castitreach",         "https://castitreach.com/casting-calls",    "parse_generic_aggregator", "requests", "verify"),
     (3, "realitytalentsearch", "https://realitytalentsearch.com/calls",    "parse_generic_aggregator", "requests", "verify"),
+
+    # RSS / Atom feeds — cheapest + most stable engine. Always prefer
+    # the feed when a source publishes one. The parse_rss_generic
+    # parser maps feedparser entries to RawListing fields with a
+    # sensible default mapping; per-source parsers can override.
+    #
+    # Project Casting historically exposed an RSS feed at ?rss=1 on
+    # the listings page; we re-add it here so the run-without-Playwright
+    # path still gets something even if the HTML scrape is rate-limited.
+    # Validate via `python -c "import feedparser; print(feedparser.parse('https://www.projectcasting.com/casting-calls/reality-tv?rss=1').entries[:1])"`.
+    (2, "projectcasting_rss",  "https://www.projectcasting.com/casting-calls/reality-tv?rss=1",  "parse_rss_generic", "rss", "verify"),
+    (2, "backstage_rss",       "https://www.backstage.com/casting/reality-tv/feed/",             "parse_rss_generic", "rss", "verify"),
+    (2, "auditionsfree_rss",   "https://www.auditionsfree.com/category/reality-tv/feed/",        "parse_rss_generic", "rss", "verify"),
 ]
 
 
@@ -149,6 +166,80 @@ def fetch_requests(url: str) -> str | None:
         finally:
             _polite_sleep()
     return None
+
+
+def fetch_rss(url: str) -> list | None:
+    """Read an RSS/Atom feed via feedparser. Returns a list of feed
+    entries (dict-like) so the rss parser can map fields verbatim,
+    or None on permanent failure.
+
+    Imported lazily so the requests-only path doesn't require the
+    feedparser package. Add `feedparser>=6.0` to requirements when the
+    scout is wired into a CI image that doesn't already have it.
+
+    Note: feedparser is patient about malformed feeds and will return
+    even when the response is HTML rather than a real feed. We guard
+    against that by requiring at least one entry with a `link` field —
+    a sane heuristic for "this is actually a feed and not a 200 OK
+    error page".
+    """
+    try:
+        import feedparser
+    except ImportError:
+        log.error("feedparser not installed — `pip install feedparser`. Skipping %s", url)
+        return None
+
+    try:
+        log.info("GET %s (rss)", url)
+        parsed = feedparser.parse(url, agent=random.choice(USER_AGENTS))
+        entries = list(getattr(parsed, "entries", []) or [])
+        if not entries or not any(e.get("link") for e in entries):
+            log.warning("rss feed returned no parseable entries: %s", url)
+            return None
+        return entries
+    except Exception as e:  # noqa: BLE001 — feedparser surfaces many error shapes
+        log.warning("rss fetch failed %s — %s", url, e)
+        return None
+    finally:
+        _polite_sleep()
+
+
+def parse_rss_generic(feed_entries, source_url: str, tier: int) -> Iterable[RawListing]:
+    """Map feedparser entries to RawListing fields with the default
+    mapping that covers Project Casting / Backstage / Auditions Free.
+    Site-specific parsers can override; this generic one is good
+    enough to start ingesting.
+
+    feedparser entry conventions used:
+      - .title         → showTitle
+      - .summary       → description (HTML stripped via BeautifulSoup)
+      - .link          → applyUrl
+      - .published     → deadline (best-effort; many feeds don't carry one)
+      - .tags / .category → location/network when applicable
+    """
+    for entry in feed_entries or []:
+        title = (entry.get("title") or "").strip()
+        link  = (entry.get("link")  or "").strip()
+        if not title or not link:
+            continue
+        # Strip HTML in summary — feeds often embed paragraph markup.
+        summary_html = entry.get("summary") or entry.get("description") or ""
+        try:
+            summary_text = BeautifulSoup(summary_html, "html.parser").get_text(" ", strip=True)
+        except Exception:  # noqa: BLE001
+            summary_text = summary_html
+        yield RawListing(
+            showTitle=title,
+            network=_domain(source_url).split(".")[0].upper(),
+            castingCompany="",
+            description=summary_text[:2000],
+            applyUrl=link,
+            deadline=str(entry.get("published") or ""),
+            location="",
+            pay="",
+            sourceUrl=source_url,
+            sourceTier=tier,
+        )
 
 
 def fetch_playwright(url: str) -> str | None:
@@ -277,13 +368,21 @@ def scrape(tier_filter: int | None = None, max_per_source: int | None = None, wi
             log.error("parser %s missing for %s — skipping", parser_name, name)
             continue
 
-        html = fetch_playwright(url) if engine == "playwright" else fetch_requests(url)
-        if not html:
+        # Dispatch to the engine. RSS returns a list of feed entries,
+        # not HTML, so the parser signature for `rss` engine is
+        # (feed_entries, source_url, tier) rather than (html, ...).
+        if engine == "rss":
+            payload = fetch_rss(url)
+        elif engine == "playwright":
+            payload = fetch_playwright(url)
+        else:
+            payload = fetch_requests(url)
+        if not payload:
             decaying_sources.append(f"{name} ({status})")
             continue
 
         count = 0
-        for listing in parser(html, url, tier):
+        for listing in parser(payload, url, tier):
             results.append(listing)
             count += 1
             if max_per_source and count >= max_per_source:

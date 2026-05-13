@@ -148,7 +148,8 @@ jobs:
   preview:
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: write
+      contents: read          # REQUIRED for actions/checkout on bot-opened PRs
+      pull-requests: write    # for the preview-URL comment
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -184,6 +185,7 @@ The action posts the preview URL as a PR comment automatically.
 4. **No build cache** — `cache: 'npm'` cuts CI time by 30–60s.
 5. **Service account with too-broad roles** — granting `Owner` instead of specific Firebase roles. Principle of least privilege.
 6. **Build env vars missing** — Vite bundles `VITE_*` at build time; if they're not in the workflow's env, they're empty strings in production.
+7. **Declaring `permissions:` without `contents: read`** — when a workflow declares any `permissions:` block, every un-declared scope defaults to **none** (not the prior implicit defaults). A workflow with `permissions: { pull-requests: write }` and no `contents` scope will fail `actions/checkout` with `Repository not found` *whenever the PR is opened by a bot account* (e.g., a cross-repo sync workflow, Dependabot in some configs, or any GitHub App). It works when *you* open the PR because your admin permissions flow through `GITHUB_TOKEN` implicitly. Always include `contents: read` (and `checks: write` if you write check runs) when declaring `permissions:` on a `pull_request`-triggered workflow. Battle-tested 2026-05-13 when the claude-skills cross-repo sync workflow opened bot-authored sync PRs into `holiday-lights` and `toronadoentertainment`; their `preview.yml` declared only `pull-requests: write` and the checkout step failed. `Tribeca-Film-Festival-2026/preview.yml` had `contents: read` declared and worked. The fix landed in `holiday-lights@9609f7b` + `toronadoentertainment@4fd2900`.
 
 ## Source of truth in this portfolio
 

@@ -1,5 +1,5 @@
 # Mythie (CastHub)
-⚠️ LAST UPDATED: 2026-05-10 — verify against live app before using in training
+⚠️ LAST UPDATED: 2026-05-13 — verify against live app before using in training
 
 ## Identity
 - **Repo:** https://github.com/jayhawkrules/CastHub1
@@ -24,7 +24,7 @@ TBC — Mythie (formerly known internally as CastHub) is a casting platform for 
 | Public marketing site (audience chooser, landing, about, FAQ, features, contact, alternatives, competitor compares) | ✅ Live | Always-on AudienceChooser at apex (no auto-redirect) |
 | Show directory + 13 curated show landing pages + casting calendar | ✅ Live | TMDb imagery; filters: all / casting / in_production / aired / archived |
 | Public talent profile pages + archetype public pages | ✅ Live | SEO surfaces |
-| Blog hub (RSS-driven) + Talent Tips hub + articles | ✅ Live | RSS poll cron every 4h |
+| Blog hub (RSS-driven) + Talent Tips hub + articles | ✅ Live | RSS poll cron every 4h. `blogPosts` collection has public Firestore read (PR #557) so the hub renders without auth. |
 | Pricing — Casting Teams page | ✅ Live | Trial / Producer $49 / Pro Director $149 / Studio (contact sales). $499 tier missing — see manual task. |
 | Pricing — Talent page | ✅ Live | Public guarantee: talent always free |
 | Trust page (`#trust`) | ✅ Live | |
@@ -34,7 +34,7 @@ TBC — Mythie (formerly known internally as CastHub) is a casting platform for 
 | **TALENT JOURNEY** | | |
 | Talent landing → Aha flow (90-second pre-auth demo) → signup → onboarding tour | ✅ Live | |
 | Talent dashboard | ✅ Live | |
-| Talent profile builder | ✅ Live | |
+| Talent profile builder | ✅ Live | Per-field inline edit on the Overview tab (PR-A2 2026-05-13) — edit a single field without opening the full editor. SocialLinksEditor in the Media & Social tab (PR-B #554) — per-platform handles. AI Tools as its own tab with Overview snapshot strip (#553). |
 | Personality quiz → 10-archetype assignment | ✅ Live | Differentiator: no competitor matches |
 | Talent swipe deck | ✅ Live | |
 | Quick Apply flow | ✅ Live | |
@@ -67,6 +67,7 @@ TBC — Mythie (formerly known internally as CastHub) is a casting platform for 
 | Semantic Tape Search — embedding-based applicant search + Claude re-rank | ✅ Live | Studio-tier gated (PR #416). 5-PR series complete: embedding pipeline + backend route + producer search UI + hybrid filters + backfill cron + GDPR cascade (#413–#417). Frontend: `components/ai/SemanticTapeSearch.tsx`. |
 | AI Bulk Personalisation (Claude-drafted bulk messages with safety preview) | ✅ Live | Producer side. `bulkPersonalisationService.ts` + `bulkPreviewSafety.ts` + `BulkPreviewModal`. Wired into `BatchActionBar` (#402–#404). |
 | AI Casting Assistant (sidebar, token-budgeted, top-up packs) | 🚧 In dev | Token balance + top-up purchase live; conversational chat panel pending next PR |
+| AI Tools tier gate on ProfileModal (free → upgrade card; paid → AiWowPanel) | ✅ Live | PR-UI-3 (#558). Free plan sees an upgrade card with a Pro CTA that routes to Settings (Billing); paid plans see the AI Tools panel unchanged. Reads `useAiAccess()` (`hooks/useAiAccess.ts`). |
 | Tap-and-talk voice messages (admin Fix Proposals + assistant) | ✅ Live | |
 | Help Bot Widget | ✅ Live | |
 | AI consent gate | ✅ Live | |
@@ -78,7 +79,7 @@ TBC — Mythie (formerly known internally as CastHub) is a casting platform for 
 | Terms Acceptance gate | ✅ Live | |
 | Security Watermark (super-admin exempt) | ✅ Live | |
 | Delete Account flow (`#delete-account`) | ✅ Live | GDPR right-to-erasure |
-| Legal pages (Terms / Privacy / DPA) | ✅ Live | |
+| Legal pages (Terms / Privacy / DPA / DMCA) | ✅ Live | 2026-05-13: governing law moved Florida → **Missouri**; arbitration in Jackson County, Missouri; Missouri MMPA + other-state non-waivable consumer rights preserved (`components/legal/legalCopy.ts`). DMCA copy refreshed. |
 | **PAYMENTS** | | |
 | Stripe subscription tiers — Producer $49, Pro Director $149, Studio (contact sales) | ✅ Live | Live mode confirmed 2026-05-10. $499 tier missing from page — see manual task. |
 | AI token top-up packs — Pack 1M ($10) / Pack 5M ($40) | ✅ Live | Backend `aiProxy.js` + `STRIPE_PRICE_PACK_*` env |
@@ -103,16 +104,19 @@ TBC — Mythie (formerly known internally as CastHub) is a casting platform for 
 | iOS app (Capacitor build) | 🚧 In dev | Build wired locally; App Store submission not started |
 | Android app (Capacitor build + push notifications) | 🚧 In dev | Play Store process started + approved; testing not yet begun |
 | **NOTIFICATIONS** | | |
-| In-app Notification Bell | ✅ Live | |
+| In-app Notification Bell | ✅ Live | Real-time via Firestore `onSnapshot` on `users/{uid}/inboxNotifications` (PR-UI-1 #558). Bell lights up within a Firestore round-trip of an @-mention or other inbox write — replaces the prior 60s poll. Rule restricts read to the owner. |
 | Daily notification digest email cron | ✅ Live | Daily 14:00 UTC |
 | Push notifications (Capacitor / Android) | 🚧 In dev | Wired but ships with Android app launch |
 | **ADMIN / OPS** | | |
 | Admin Dashboard | ✅ Live | |
 | Admin Settings + Settings Hub | ✅ Live | |
+| Platform SMS panel (Twilio toll-free) | ✅ Panel live / ⚠️ Not configured | Super-admin surface for the platform-central SMS sender used for casting-call alerts, profile-completion reminders, and 2FA. `components/admin/PlatformSmsPanel.tsx` + `backend/adminSmsRoutes.js`. Backend status endpoint reports missing env vars (`MYTHIE_TWILIO_SID/TOKEN/FROM`) — set in Railway before the panel reports configured. Producer-to-talent outreach is a separate per-org BYOE Twilio integration. |
+| Analytics event POST endpoint (`/api/analytics/event`) | ✅ Live | Server-side ingest for the event taxonomy (`backend/analyticsRoutes.js`). |
 | Beta Applications admin | ✅ Live | |
 | Audit Portal | ✅ Live | |
 | **SHARED UX** | | |
 | Command Palette | ✅ Live | |
+| Live-collab presence (who else is viewing this record) | ✅ Live | `services/presenceTracker.ts`; visible on profile + project surfaces. |
 | Unicorn Celebration animations + brand mascot | ✅ Live | |
 | Empty State component | ✅ Live | |
 | Beta Landing + beta access flow | ✅ Live | |
@@ -142,3 +146,4 @@ TBC
 | 2026-05-10 | Reference file created; all sections marked TBC pending feature audit |
 | 2026-05-10 | Feature audit completed; Inventory populated from CastHub1 codebase |
 | 2026-05-10 | Inventory follow-up: added Semantic Tape Search (Studio-tier), AI Bulk Personalisation, onboarding demo seeding, completed bulk-status pipeline series; expanded brand-invariant gates (3→8) — covers commits 5d90706..6d9d5a3 |
+| 2026-05-13 | Launch-prep batch (PRs #553–#558): real-time NotificationBell via `onSnapshot`; AI Tools tier gate on ProfileModal (free → upgrade card / paid → AiWowPanel); per-field inline edit on profile Overview; SocialLinksEditor in Media & Social tab; AI Tools own tab + Overview snapshot strip; Platform SMS super-admin panel (panel live, env vars not yet configured in Railway); analytics event POST endpoint; live-collab presence; legal Florida→Missouri governing-law shift; `blogPosts` public Firestore read (PR #557). Two items deferred pending decisions: "Mythie-join invite" copy wording from #553 (need exact label); Sentry retirement state vs in-house error-tracking-system (.env.example still has `SENTRY_DSN=`). |

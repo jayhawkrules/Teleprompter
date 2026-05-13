@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://claude-skills/legal-compliance-guardian/schemas/legal-inventory.schema.json",
+  "title": "Legal Inventory",
+  "description": "Per-app legal inventory. Sits at /legal/legal-inventory.json in each portfolio repo. Source of truth for Lane A drift audits.",
+  "type": "object",
+  "required": [
+    "appId",
+    "legalOwner",
+    "publicUrl",
+    "legalPages",
+    "jurisdictions",
+    "currentTermsVersion",
+    "currentPrivacyVersion"
+  ],
+  "properties": {
+    "appId": { "type": "string" },
+    "legalOwner": {
+      "type": "string",
+      "description": "Default Toronado Entertainment, LLC. Producing Hollywood for the Producing Hollywood site only.",
+      "enum": ["Toronado Entertainment, LLC", "Producing Hollywood"]
+    },
+    "publicUrl": { "type": "string", "format": "uri" },
+    "legalPages": {
+      "type": "object",
+      "required": ["terms", "privacy"],
+      "properties": {
+        "terms": { "type": "string" },
+        "privacy": { "type": "string" },
+        "cookies": { "type": "string" },
+        "refundPolicy": { "type": "string" },
+        "acceptableUse": { "type": "string" },
+        "dmca": { "type": "string" },
+        "contestRules": { "type": "string" }
+      }
+    },
+    "dataCollected": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "vendors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "purpose", "personalData", "isDataProcessor"],
+        "properties": {
+          "name": { "type": "string" },
+          "purpose": { "type": "string" },
+          "personalData": { "type": "array", "items": { "type": "string" } },
+          "isDataProcessor": { "type": "boolean" }
+        }
+      }
+    },
+    "usesAiDecisioning": { "type": "boolean" },
+    "acceptsMinors": { "type": "boolean" },
+    "hasPaidSubscriptions": { "type": "boolean" },
+    "hasMarketplace": { "type": "boolean" },
+    "hasAffiliateLinks": { "type": "boolean" },
+    "jurisdictions": {
+      "type": "array",
+      "description": "ISO 3166-1 alpha-2 country codes covered by current legal language. USA primary, GB secondary, additional countries layered on.",
+      "items": { "type": "string", "minLength": 2, "maxLength": 2 },
+      "default": ["US", "GB"]
+    },
+    "coverageGapPolicy": {
+      "type": "string",
+      "description": "How to treat signups from countries not in jurisdictions[].",
+      "enum": ["allow_with_gdpr_baseline_and_queue_audit", "allow_unrestricted", "block"],
+      "default": "allow_with_gdpr_baseline_and_queue_audit"
+    },
+    "currentTermsVersion": { "type": "string" },
+    "currentPrivacyVersion": { "type": "string" },
+    "currentCookieVersion": { "type": "string" },
+    "lastAnnualEmailSentDate": { "type": "string", "format": "date" },
+    "nextAnnualEmailDueDate": { "type": "string", "format": "date" }
+  }
+}

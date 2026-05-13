@@ -1,0 +1,106 @@
+name: Legal Compliance Guardian — Twice-Monthly Audit
+
+on:
+  schedule:
+    - cron: '0 8 1,15 * *'
+  workflow_dispatch:
+  repository_dispatch:
+    types: [jurisdiction_coverage_gap]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  legal-audit:
+    name: Open audit issue
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Echo run context
+        run: |
+          echo "Run date: $(date -u +%Y-%m-%d)"
+          echo "Event: ${{ github.event_name }}"
+          echo "Dispatch type: ${{ github.event.action }}"
+
+      - name: Create audit issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const today = new Date().toISOString().slice(0, 10);
+            const eventName = context.eventName;
+            const dispatchType = context.payload.action || '';
+            const isGap = eventName === 'repository_dispatch' && dispatchType === 'jurisdiction_coverage_gap';
+            const gapPayload = isGap ? context.payload.client_payload || {} : {};
+
+            const title = isGap
+              ? `[Legal Audit] Jurisdiction coverage gap — ${gapPayload.appId || 'unknown app'} / ${gapPayload.countryCode || 'unknown country'} — ${today}`
+              : `[Legal Audit] Twice-monthly compliance check — ${today}`;
+
+            const gapBody = isGap ? `
+            ## Jurisdiction coverage gap detected
+
+            **App:** ${gapPayload.appId || 'unknown'}
+            **Country:** ${gapPayload.countryCode || 'unknown'}
+            **Signup at:** ${gapPayload.signupAt || 'unknown'}
+
+            Run \`legal-compliance-guardian\` coverage-gap workflow. Resolve before sending any annual email for this app.
+
+            - [ ] Confirm whether current Privacy Policy / Terms language is sufficient for this jurisdiction
+            - [ ] If not, queue a 🔧 manual task to add jurisdiction-specific clauses
+            - [ ] Add country code to \`legal-inventory.json#jurisdictions\` once language is published
+            - [ ] Clear \`pendingJurisdictionReview\` on affected user records
+            ` : '';
+
+            const standardBody = `
+            ## Twice-Monthly Legal Compliance Audit — ${today}
+
+            **Action required:** Open Claude Code, load \`legal-compliance-guardian\`, run the full Lane A drift audit across all portfolio sites. Resolve all RED findings before closing this issue.
+
+            **Controller of record:** Toronado Entertainment, LLC (Producing Hollywood site: Producing Hollywood)
+
+            ### Sites to audit
+            - [ ] Mythie / CastHub
+            - [ ] BacklotHub
+            - [ ] CueHound (repo: run-of-show)
+            - [ ] Aclamos (repo: Awardssubmission) — includes Ballotis feature
+            - [ ] The Production Shelf
+            - [ ] ARTAS — American Reality Television Awards
+            - [ ] CRM-Ai (confirm subprocessor disclosures in source apps)
+            - [ ] Noelly (repo: holiday-lights)
+            - [ ] Producing Hollywood
+            - [ ] Teleprompter App
+
+            ### Checks per site
+            - [ ] Legal page exists and is reachable
+            - [ ] Visible "Last updated" date present
+            - [ ] Privacy Policy matches \`legal-inventory.json\` vendor list
+            - [ ] Terms match current pricing/payment model
+            - [ ] Cookie banner matches actual tracking tools in use
+            - [ ] All new third-party vendors disclosed
+            - [ ] Materiality decision logged for any pending changes
+            - [ ] Terms version in app config matches live document
+            - [ ] \`legalAcceptanceEvents\` logging is wired and working
+            - [ ] No RED items from previous audit still open
+            - [ ] Jurisdiction-coverage-gap queue is empty for this app
+
+            ### Annual email status
+            - [ ] Check \`lastAnnualEmailSentDate\` in each \`legal-inventory.json\`
+            - [ ] If next due date is within 45 days, begin pre-send deep dive
+
+            ### Output
+            - [ ] Audit report saved
+            - [ ] RED findings converted to 🔧 manual tasks
+            - [ ] YELLOW findings scheduled
+            - [ ] No live legal page edited without Andrew's approval
+            `;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              labels: ['legal', 'compliance', 'automated'],
+              body: isGap ? gapBody : standardBody
+            });

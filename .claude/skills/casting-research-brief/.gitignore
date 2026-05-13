@@ -1,0 +1,21 @@
+# Runtime pipeline artefacts (gather -> score -> summarise output PII at rest;
+# never commit). Persistence is via firebase-admin to Firestore, not to disk.
+output/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Node
+node_modules/
+
+# Local env / credentials
+.env
+.env.local
+*-service-account*.json
+firebase-adminsdk-*.json
+
+# Regression test corpus inputs may contain PII-shaped fixtures; commit
+# only the schema-validated, synthetic ones under output/test_briefs/.
+output/test_briefs/_real/

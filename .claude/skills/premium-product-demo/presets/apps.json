@@ -1,0 +1,86 @@
+{
+  "noelly": {
+    "prefix": "nl",
+    "name": "Noelly",
+    "accentColor": "#F59E0B",
+    "darkBg": "#0a0f1e",
+    "fontFamily": "Inter, system-ui, sans-serif",
+    "mood": "magical, warm, family-friendly, festive, snowy",
+    "motionStyle": "sparkle, snowfall, route drawing, pin reveals, aurora blobs",
+    "primaryDemo": "map discovery + sleigh route planning + charity donations",
+    "ctaStyle": "Join the waitlist",
+    "tagline": "Find the most magical holiday lights near you"
+  },
+  "mythie": {
+    "prefix": "ch",
+    "name": "Mythie / CastHub",
+    "accentColor": "#7C3AED",
+    "darkBg": "#0d0d1a",
+    "fontFamily": "Inter, system-ui, sans-serif",
+    "mood": "premium, cinematic, production-grade, bold",
+    "motionStyle": "casting cards, status changes, shortlist movement, talent reveal",
+    "primaryDemo": "talent discovery and role pipeline management",
+    "ctaStyle": "Start casting",
+    "tagline": "The casting OS for modern productions"
+  },
+  "teleprompter": {
+    "prefix": "tp",
+    "name": "Teleprompter",
+    "accentColor": "#10B981",
+    "darkBg": "#0a1a12",
+    "fontFamily": "Inter, system-ui, sans-serif",
+    "mood": "clean, professional, focused, calm",
+    "motionStyle": "smooth scroll, word highlighting, speed transitions",
+    "primaryDemo": "script scrolling with voice-sync and remote control",
+    "ctaStyle": "Try free",
+    "tagline": "Professional teleprompting for any device"
+  },
+  "runofshow": {
+    "prefix": "rs",
+    "name": "Run of Show",
+    "accentColor": "#EF4444",
+    "darkBg": "#1a0a0a",
+    "fontFamily": "Inter, system-ui, sans-serif",
+    "mood": "urgent, precise, production-ready, high-stakes",
+    "motionStyle": "timeline scrub, countdown, status flips, live indicators",
+    "primaryDemo": "live event timeline with real-time crew coordination",
+    "ctaStyle": "Plan your show",
+    "tagline": "Never miss a cue again"
+  },
+  "awards": {
+    "prefix": "aw",
+    "name": "Awards / ARTAS",
+    "accentColor": "#D97706",
+    "darkBg": "#12100a",
+    "fontFamily": "Inter, system-ui, sans-serif",
+    "mood": "prestigious, gold, ceremonial, elegant",
+    "motionStyle": "envelope reveal, trophy shine, confetti burst, nominee cards",
+    "primaryDemo": "awards submission tracking and ceremony management",
+    "ctaStyle": "Submit your project",
+    "tagline": "Streamline your awards campaign"
+  },
+  "producingHollywood": {
+    "prefix": "ph",
+    "name": "Producing Hollywood",
+    "accentColor": "#3B82F6",
+    "darkBg": "#0a0f1a",
+    "fontFamily": "Inter, system-ui, sans-serif",
+    "mood": "professional, trustworthy, industry-standard, blue-chip",
+    "motionStyle": "invoice slide-in, payment status, document stack, approval flow",
+    "primaryDemo": "production invoicing and financial tracking",
+    "ctaStyle": "Start invoicing",
+    "tagline": "Production accounting made simple"
+  },
+  "productionShelf": {
+    "prefix": "ps",
+    "name": "The Production Shelf",
+    "accentColor": "#8B5CF6",
+    "darkBg": "#0d0a1a",
+    "fontFamily": "Inter, system-ui, sans-serif",
+    "mood": "creative, curated, discovery-focused, bookshelf warmth",
+    "motionStyle": "shelf scroll, book spine reveal, category filter, recommendation cards",
+    "primaryDemo": "curated production resources and tools marketplace",
+    "ctaStyle": "Browse the shelf",
+    "tagline": "Every tool a producer needs, in one place"
+  }
+}

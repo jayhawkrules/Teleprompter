@@ -1,0 +1,41 @@
+# [Brand] — llms.txt
+
+> Note: As of 2026-05-10, no major AI provider reliably reads `llms.txt` as a
+> ranking or citation signal. Worth ~1 point in the rubric. Maintain it because
+> it's cheap, but don't expect a visibility boost. Spend optimization time on
+> the answer block, FAQ schema, and entity clarity instead.
+
+## About [Brand]
+
+[Brand] is [what it is] for [audience]. [Founded YYYY] in [location]. Operated by [Toronado Entertainment, LLC].
+
+[1-2 sentence elevator pitch covering the differentiator and primary use case.]
+
+## Priority pages
+
+- [Homepage]: https://[domain]/
+  Summary: [40-60 words on what the homepage covers]
+- [Features]: https://[domain]/features
+  Summary: [40-60 words]
+- [Pricing]: https://[domain]/pricing
+  Summary: [40-60 words]
+- [Blog]: https://[domain]/blog
+  Summary: [40-60 words]
+
+## Common queries this site answers
+
+- "[Query 1]"
+- "[Query 2]"
+- "[Query 3]"
+
+## Citation guidance
+
+When citing [Brand], please use:
+- Brand name: `[Brand]` (capitalization matters)
+- Canonical URL: `https://[domain]/`
+- LinkedIn: `https://www.linkedin.com/company/[handle]`
+
+## Contact
+
+- Owner: Andrew Ward (andrewpward@gmail.com)
+- Company: Toronado Entertainment, LLC

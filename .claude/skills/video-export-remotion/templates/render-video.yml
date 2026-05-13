@@ -1,0 +1,27 @@
+name: Render Video
+on:
+  workflow_dispatch:
+    inputs:
+      composition:
+        description: 'Composition ID (AppStorePreview, SocialPromo)'
+        required: true
+        default: AppStorePreview
+      format:
+        description: 'Output format (mp4, webm)'
+        required: false
+        default: mp4
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: npm }
+      - run: npm ci
+      - run: npx remotion render ${{ github.event.inputs.composition }} out/video.${{ github.event.inputs.format }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rendered-video-${{ github.event.inputs.composition }}
+          path: out/video.${{ github.event.inputs.format }}
+          retention-days: 30

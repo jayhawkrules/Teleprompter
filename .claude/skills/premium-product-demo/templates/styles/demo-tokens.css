@@ -1,0 +1,23 @@
+:root {
+  --demo-font: Inter, system-ui, -apple-system, sans-serif;
+  --demo-radius-sm: 8px;
+  --demo-radius-md: 16px;
+  --demo-radius-lg: 20px;
+  --demo-radius-pill: 100px;
+  --demo-radius-phone: 40px;
+  --demo-glass-bg: rgba(255,255,255,0.04);
+  --demo-glass-border: rgba(255,255,255,0.08);
+  --demo-glass-blur: blur(12px);
+  --demo-text-primary: #ffffff;
+  --demo-text-secondary: rgba(255,255,255,0.6);
+  --demo-text-tertiary: rgba(255,255,255,0.4);
+  --demo-shadow-phone: 0 40px 80px rgba(0,0,0,0.6);
+  --demo-shadow-card: 0 8px 32px rgba(0,0,0,0.3);
+  --demo-phone-width: 280px;
+  --demo-phone-height: 560px;
+  --demo-ease-out: cubic-bezier(0.16,1,0.3,1);
+  --demo-ease-spring: cubic-bezier(0.34,1.56,0.64,1);
+  --demo-duration-fast: 200ms;
+  --demo-duration-normal: 500ms;
+  --demo-duration-slow: 800ms;
+}

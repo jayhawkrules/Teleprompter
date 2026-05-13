@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "brand": "YourApp",
+  "entities": [
+    "app name",
+    "category",
+    "audience",
+    "key feature"
+  ],
+  "priorityQueries": [
+    "best [category] platform for [audience]",
+    "how to [key action] for [use case]",
+    "what is [brand name]",
+    "[brand name] vs [competitor]",
+    "[brand name] pricing"
+  ],
+  "competitors": [
+    "Competitor A",
+    "Competitor B",
+    "Competitor C"
+  ],
+  "priorityPages": [
+    "/",
+    "/features",
+    "/pricing",
+    "/blog"
+  ],
+  "deployTarget": "vercel",
+  "siteUrl": "https://yourdomain.com"
+}

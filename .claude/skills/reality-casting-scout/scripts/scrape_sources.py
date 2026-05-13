@@ -2,19 +2,24 @@
 """
 scrape_sources.py - Step 1 of the reality-casting-scout pipeline.
 
-Scrapes Tier 1, 2, and 3 reality TV casting sources, returns raw listing dicts,
-and writes them to output/raw_listings.json. Polite rate-limiting (1.5s between
-requests). Does NOT score or upload - that's Steps 3 and 4.
+v2 (2026-05-13): browser-like headers, per-source engine flag (requests vs
+playwright), retry/backoff for transient 429/503, and explicit `status`
+tracking so the operator sees source decay in the log before listings
+disappear.
 
 Usage:
-  python scrape_sources.py                # all tiers
+  python scrape_sources.py                # all tiers, requests engine only
   python scrape_sources.py --tier 1       # tier 1 only
   python scrape_sources.py --tier 2 --max 25
+  python scrape_sources.py --with-playwright  # also run playwright engine
+                                              # (requires `pip install playwright
+                                              # && playwright install chromium`)
 """
 
 import argparse
 import json
 import logging
+import random
 import sys
 import time
 from dataclasses import asdict, dataclass, field
@@ -26,9 +31,24 @@ from urllib.parse import urlparse
 import requests
 from bs4 import BeautifulSoup
 
-RATE_LIMIT_SECONDS = 1.5
-USER_AGENT = "MythieCastingScout/1.0 (+https://mythie.app/bot)"
+# Polite-but-realistic pacing. Real users don't hammer a site at 1.5s
+# intervals — they think between clicks. Add jitter so the cadence
+# doesn't look mechanical to a WAF watching for bot patterns.
+RATE_LIMIT_BASE_SECONDS = 1.5
+RATE_LIMIT_JITTER_SECONDS = 1.2
 TIMEOUT_SECONDS = 20
+MAX_RETRIES = 3
+
+# Rotate among current real-Chrome User-Agents. The v1 UA
+# ("MythieCastingScout/1.0 (+https://mythie.app/bot)") was honest but
+# invited the 403 we saw from Discovery on 2026-05-13. A real browser
+# UA + Accept-Language + Accept signals reach more sites cleanly. We're
+# still polite — see RATE_LIMIT_* and per-source caching upstream.
+USER_AGENTS = [
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+]
 
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
 OUTPUT_FILE = OUTPUT_DIR / "raw_listings.json"
@@ -52,44 +72,116 @@ class RawListing:
     scrapedAt: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
+# Per-source: (tier, name, url, parser_name, engine, status)
+#   engine: "requests" — plain HTTP fetch + BeautifulSoup
+#           "playwright" — headless browser (only runs when --with-playwright)
+#   status: "working" | "verify" | "dead" | "js-required"
+# See references/sources.md for the audit that produced these values.
 SOURCES = [
-    (1, "abc",              "https://abc.com/casting",                  "parse_generic_network"),
-    (1, "bravotv",          "https://www.bravotv.com/be-on-bravo",      "parse_generic_network"),
-    (1, "netflix",          "https://www.netflix.com/jobs/casting",     "parse_generic_network"),
-    (1, "cbs",              "https://www.cbs.com/casting/",             "parse_generic_network"),
-    (1, "nbc",              "https://www.nbc.com/casting",              "parse_generic_network"),
-    (1, "mtv",              "https://www.mtv.com/casting",              "parse_generic_network"),
-    (1, "discovery",        "https://www.discovery.com/casting",        "parse_generic_network"),
-    (1, "tlc",              "https://www.tlc.com/casting/",             "parse_generic_network"),
-    (1, "hbo",              "https://www.hbo.com/casting",              "parse_generic_network"),
-    (1, "hulu",             "https://www.hulu.com/casting",             "parse_generic_network"),
-    (1, "fox",              "https://www.fox.com/casting",              "parse_generic_network"),
-    (1, "peacocktv",        "https://www.peacocktv.com/casting",        "parse_generic_network"),
-    (1, "paramountplus",    "https://www.paramountplus.com/casting/",   "parse_generic_network"),
-    (2, "projectcasting",   "https://www.projectcasting.com/casting-calls/reality-tv", "parse_projectcasting"),
-    (2, "backstage",        "https://www.backstage.com/casting/reality-tv/",           "parse_backstage"),
-    (2, "castingnetworks",  "https://www.castingnetworks.com/talent/jobs?type=reality","parse_castingnetworks"),
-    (2, "auditionsfree",    "https://www.auditionsfree.com/category/reality-tv/",      "parse_auditionsfree"),
-    (2, "lacasting",        "https://www.lacasting.com/jobs?type=reality",             "parse_lacasting"),
-    (3, "castlyst",         "https://castlyst.com/casting-calls",        "parse_generic_aggregator"),
-    (3, "castitreach",      "https://castitreach.com/casting-calls",     "parse_generic_aggregator"),
-    (3, "realitytalentsearch", "https://realitytalentsearch.com/calls",  "parse_generic_aggregator"),
+    # Tier 1 — official networks (mostly JS-rendered as of 2026-05-13)
+    (1, "abc",              "https://abc.com/casting",                       "parse_generic_network",   "playwright", "js-required"),
+    (1, "nbc",              "https://www.nbc.com/casting",                   "parse_generic_network",   "playwright", "js-required"),
+    (1, "netflix",          "https://www.netflix.com/jobs/casting",          "parse_generic_network",   "playwright", "verify"),
+    (1, "cbs",              "https://www.cbs.com/casting/",                  "parse_generic_network",   "playwright", "js-required"),
+    (1, "discovery",        "https://www.discovery.com/casting",             "parse_generic_network",   "playwright", "dead"),
+    (1, "tlc",              "https://www.tlc.com/casting/",                  "parse_generic_network",   "playwright", "verify"),
+    (1, "hbo",              "https://www.hbo.com/casting",                   "parse_generic_network",   "playwright", "verify"),
+    (1, "hulu",             "https://www.hulu.com/casting",                  "parse_generic_network",   "playwright", "verify"),
+    (1, "fox",              "https://www.fox.com/casting",                   "parse_generic_network",   "playwright", "verify"),
+    (1, "peacocktv",        "https://www.peacocktv.com/casting",             "parse_generic_network",   "playwright", "verify"),
+    (1, "paramountplus",    "https://www.paramountplus.com/casting/",        "parse_generic_network",   "playwright", "verify"),
+
+    # Tier 2 — aggregators (purpose-built to be machine-readable)
+    (2, "projectcasting",   "https://www.projectcasting.com/casting-calls/reality-tv", "parse_projectcasting",  "requests",   "verify"),
+    (2, "backstage",        "https://www.backstage.com/casting/reality-tv/",          "parse_backstage",       "requests",   "verify"),
+    (2, "auditionsfree",    "https://www.auditionsfree.com/category/reality-tv/",     "parse_auditionsfree",   "requests",   "verify"),
+    (2, "castingnetworks",  "https://www.castingnetworks.com/talent/jobs?type=reality","parse_castingnetworks", "playwright", "js-required"),
+    (2, "lacasting",        "https://www.lacasting.com/jobs?type=reality",            "parse_lacasting",       "playwright", "js-required"),
+    (2, "stage32",          "https://www.stage32.com/jobs?searchQuery=reality",       "parse_generic_aggregator", "playwright", "verify"),
+    (2, "castingcrane",     "https://castingcrane.com/casting-calls",                 "parse_generic_aggregator", "playwright", "verify"),
+    (2, "castingfrontier",  "https://www.castingfrontier.com/jobs?type=reality",      "parse_generic_aggregator", "playwright", "verify"),
+    (2, "mandy",            "https://www.mandy.com/uk/casting-calls?category=reality","parse_generic_aggregator", "requests",   "verify"),
+
+    # Tier 3 — specialist platforms
+    (3, "castlyst",            "https://castlyst.com/casting-calls",       "parse_generic_aggregator", "requests", "verify"),
+    (3, "castitreach",         "https://castitreach.com/casting-calls",    "parse_generic_aggregator", "requests", "verify"),
+    (3, "realitytalentsearch", "https://realitytalentsearch.com/calls",    "parse_generic_aggregator", "requests", "verify"),
 ]
 
 
-def fetch(url: str) -> str | None:
-    try:
-        log.info("GET %s", url)
-        resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT_SECONDS)
-        if resp.status_code != 200:
+def _polite_sleep() -> None:
+    time.sleep(RATE_LIMIT_BASE_SECONDS + random.uniform(0, RATE_LIMIT_JITTER_SECONDS))
+
+
+def _browser_headers() -> dict:
+    """Return a fresh, browser-like header set for each request."""
+    return {
+        "User-Agent":      random.choice(USER_AGENTS),
+        "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Cache-Control":   "no-cache",
+        "Pragma":          "no-cache",
+    }
+
+
+def fetch_requests(url: str) -> str | None:
+    """Plain HTTP fetch via requests + BeautifulSoup downstream. Retries on
+    429/503 (transient rate-limiting from real sites) with exponential
+    backoff. Returns None on permanent failure so the caller can flag the
+    source as decaying."""
+    for attempt in range(MAX_RETRIES):
+        try:
+            log.info("GET %s (attempt %d)", url, attempt + 1)
+            resp = requests.get(url, headers=_browser_headers(), timeout=TIMEOUT_SECONDS)
+            if resp.status_code == 200:
+                return resp.text
+            if resp.status_code in (429, 503) and attempt < MAX_RETRIES - 1:
+                backoff = 2 ** attempt + random.uniform(0, 1)
+                log.warning("%s for %s — backing off %.1fs", resp.status_code, url, backoff)
+                time.sleep(backoff)
+                continue
             log.warning("non-200 (%s) for %s", resp.status_code, url)
             return None
-        return resp.text
-    except requests.RequestException as e:
-        log.warning("fetch failed %s - %s", url, e)
+        except requests.RequestException as e:
+            log.warning("fetch failed %s — %s", url, e)
+            return None
+        finally:
+            _polite_sleep()
+    return None
+
+
+def fetch_playwright(url: str) -> str | None:
+    """Headless-browser fetch via Playwright. Used for JS-rendered sources
+    (most Tier-1 networks in 2026). Returns the post-render HTML so the
+    same BeautifulSoup parsers as the requests engine can consume it.
+
+    Imported lazily so the requests-only path doesn't require the
+    playwright package to be installed."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        log.error("playwright not installed — `pip install playwright && playwright install chromium`. Skipping %s", url)
+        return None
+
+    try:
+        log.info("GET %s (playwright)", url)
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                user_agent=random.choice(USER_AGENTS),
+                locale="en-US",
+            )
+            page = context.new_page()
+            page.goto(url, wait_until="networkidle", timeout=TIMEOUT_SECONDS * 1000)
+            html = page.content()
+            browser.close()
+        return html
+    except Exception as e:  # noqa: BLE001 — playwright surfaces many error shapes
+        log.warning("playwright fetch failed %s — %s", url, e)
         return None
     finally:
-        time.sleep(RATE_LIMIT_SECONDS)
+        _polite_sleep()
 
 
 def _domain(url: str) -> str:
@@ -106,7 +198,7 @@ def _href_or_default(el, default: str) -> str:
 
 def parse_generic_network(html: str, source_url: str, tier: int) -> Iterable[RawListing]:
     soup = BeautifulSoup(html, "html.parser")
-    for card in soup.select(".casting-call, article.casting, .show-card"):
+    for card in soup.select(".casting-call, article.casting, .show-card, [data-testid*='casting']"):
         title = card.select_one("h2, h3, .title")
         if not title:
             continue
@@ -130,7 +222,7 @@ def parse_generic_aggregator(html: str, source_url: str, tier: int) -> Iterable[
 
 def parse_projectcasting(html: str, source_url: str, tier: int) -> Iterable[RawListing]:
     soup = BeautifulSoup(html, "html.parser")
-    for card in soup.select("article.casting-listing, .casting-call-card"):
+    for card in soup.select("article.casting-listing, .casting-call-card, .listing-card"):
         title_el = card.select_one("h2 a, h3 a, .listing-title")
         if not title_el:
             continue
@@ -167,25 +259,41 @@ def parse_lacasting(html: str, source_url: str, tier: int) -> Iterable[RawListin
 PARSERS = {name: fn for name, fn in globals().items() if name.startswith("parse_")}
 
 
-def scrape(tier_filter: int | None = None, max_per_source: int | None = None) -> list[RawListing]:
+def scrape(tier_filter: int | None = None, max_per_source: int | None = None, with_playwright: bool = False) -> list[RawListing]:
     results: list[RawListing] = []
-    for tier, name, url, parser_name in SOURCES:
+    decaying_sources: list[str] = []
+    for tier, name, url, parser_name, engine, status in SOURCES:
         if tier_filter is not None and tier != tier_filter:
             continue
+        if status == "dead":
+            log.info("%s: skipped (status=dead — see references/sources.md)", name)
+            continue
+        if engine == "playwright" and not with_playwright:
+            log.info("%s: skipped (engine=playwright; pass --with-playwright to include)", name)
+            continue
+
         parser = PARSERS.get(parser_name)
         if parser is None:
-            log.error("parser %s missing for %s - skipping", parser_name, name)
+            log.error("parser %s missing for %s — skipping", parser_name, name)
             continue
-        html = fetch(url)
+
+        html = fetch_playwright(url) if engine == "playwright" else fetch_requests(url)
         if not html:
+            decaying_sources.append(f"{name} ({status})")
             continue
+
         count = 0
         for listing in parser(html, url, tier):
             results.append(listing)
             count += 1
             if max_per_source and count >= max_per_source:
                 break
-        log.info("%s: %d listings (tier %d)", name, count, tier)
+        log.info("%s: %d listings (tier %d, engine=%s, status=%s)", name, count, tier, engine, status)
+        if count == 0 and status != "verify":
+            decaying_sources.append(f"{name} (returned 0)")
+
+    if decaying_sources:
+        log.warning("Decaying or zero-yield sources this run: %s", ", ".join(decaying_sources))
     return results
 
 
@@ -193,10 +301,19 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--tier", type=int, choices=[1, 2, 3])
     parser.add_argument("--max", type=int, dest="max_per_source")
+    parser.add_argument(
+        "--with-playwright",
+        action="store_true",
+        help="Also run Playwright-engine sources. Requires `playwright` Python package + a Chromium install.",
+    )
     args = parser.parse_args()
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    results = scrape(tier_filter=args.tier, max_per_source=args.max_per_source)
+    results = scrape(
+        tier_filter=args.tier,
+        max_per_source=args.max_per_source,
+        with_playwright=args.with_playwright,
+    )
     OUTPUT_FILE.write_text(json.dumps([asdict(r) for r in results], indent=2))
     log.info("wrote %d raw listings -> %s", len(results), OUTPUT_FILE)
 

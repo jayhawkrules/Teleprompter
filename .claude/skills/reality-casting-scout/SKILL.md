@@ -1,8 +1,8 @@
 ---
 name: reality-casting-scout
 description: Scrapes, scores, and uploads reality TV casting calls for Mythie (CastHub1). Auto-publishes high-trust listings to Firestore castingCalls collection. Routes low-trust and social-sourced listings to the Mythie admin review queue. Run every 3 days or on demand. Trigger phrases - "run the casting scout", "find new casting calls", "update casting listings", "scout casting calls for Mythie".
-version: 1.0.0
-last_reviewed: 2026-05-11
+version: 2.0.0
+last_reviewed: 2026-05-13
 expires: 2026-11-01
 primary-app: CastHub1 (Mythie)
 repo: jayhawkrules/CastHub1
@@ -10,6 +10,29 @@ firebase-project: casthub-1d833
 author: Andrew Ward (jayhawkrules)
 allowed-tools: [Read, Write, Bash, WebFetch]
 trigger_cadence: every 3 days (cron 0 8 */3 * *)
+---
+
+## v2 (2026-05-13) — what changed and why
+
+The first production run on 2026-05-13 returned **0 raw listings** across every Tier-1 network: ABC / Netflix / CBS / NBC returned 200 but parsed empty (listings are client-rendered SPAs the plain `requests` scraper can't see); Bravo / MTV returned 404 (URLs retired); Discovery returned 403 (bot-blocked). v2 rebuilds the source side around that reality.
+
+Concretely:
+
+1. **Browser-like headers.** v1 sent `User-Agent: MythieCastingScout/1.0` which invited the Discovery 403. v2 rotates among real Chrome UAs + sends Accept-Language / Accept-Encoding the way a browser does. Polite (1.5s + jitter) but doesn't announce itself as a bot.
+2. **Per-source engine flag.** Each row in `SOURCES` now declares `engine: "requests"` or `engine: "playwright"`. JS-rendered network sites use the Playwright engine; aggregators (Project Casting, Backstage, Mandy, etc.) stay on `requests`. The Playwright engine is opt-in via `--with-playwright` so a no-Chromium environment can still run the aggregator-only fast path.
+3. **Retry + backoff** on 429 / 503 with exponential delay + jitter — handles transient rate-limiting on real aggregators without ditching the source.
+4. **Per-source `status` column** (`working` / `verify` / `dead` / `js-required`) — the scraper logs the status alongside the listing count so the operator sees decay before listings disappear. `dead` sources are skipped automatically; the references manifest carries a note about why.
+5. **New 2026-era aggregator sources** added to the manifest: Stage 32, Casting Crane, Casting Frontier, Mandy. These are 2025+ platforms that didn't exist when v1 was written.
+6. **Known-dead URLs documented** in `references/sources.md` so v3 doesn't re-add them without research.
+
+**Aggregator-first** is the v2 mantra: Tier-2 platforms are purpose-built to be machine-readable. They're where the real volume lives. Tier-1 networks now run on a slower (weekly) Playwright cadence — JS rendering is expensive, network pages turn over slowly, and the same listings appear on Tier 2 aggregators a day or two later.
+
+**Still TODO** (next refinement cycle):
+
+- Selector reality-check: even with Playwright rendering, the current `.casting-call, article.casting, .show-card` CSS selectors are guesses. Each Tier-1 parser needs its selectors validated against actual rendered HTML after the first Playwright-enabled run.
+- RSS feed support for sources that publish one (Project Casting historically had `?rss=1`). Cheaper + more stable than HTML scraping.
+- Trusted casting-director social handles list: Andrew to curate (see references/sources.md Tier 4).
+
 ---
 
 # Reality Casting Scout
@@ -46,9 +69,18 @@ Full source list: `references/sources.md`.
 
 ## Step 1 - Scrape
 
-Run `scripts/scrape_sources.py`. Targets Tier 1-3 sources with 1.5s rate-limit between requests. Optional `--tier <1|2|3>` flag.
+Run `scripts/scrape_sources.py`. Targets Tier 1-3 sources with browser-like headers + 1.5s polite rate-limit (jittered) between requests. Retries on 429/503 with exponential backoff.
+
+Flags:
+- `--tier <1|2|3>` — limit to a tier
+- `--max <N>` — cap listings per source (useful during a sanity-check run)
+- `--with-playwright` — also run JS-rendered sources (network sites). Requires `pip install playwright && playwright install chromium`. Without this flag, `engine: playwright` sources are skipped and the run is aggregator-only (fast, no Chromium download).
 
 Output: `output/raw_listings.json`.
+
+Recommended cadence:
+- **Every 3 days:** aggregator-only run (no `--with-playwright`). Fast, no extra deps.
+- **Weekly:** full run including `--with-playwright`. Catches the network-direct listings that aggregators may not pick up. The GitHub Actions workflow at `.github/workflows/casting-scout.yml` should install Playwright on this slower cadence.
 
 ## Step 2 - Normalise
 

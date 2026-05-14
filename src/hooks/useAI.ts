@@ -11,8 +11,30 @@ export interface ToastFn {
   (type: 'success' | 'error' | 'info', message: string): void;
 }
 
-const LS_KEY = 'televibe_history';
-const lsGet  = (): HistoryItem[] => { try { const s = localStorage.getItem(LS_KEY); return s ? JSON.parse(s) : []; } catch { return []; } };
+const LS_KEY        = 'teleprompter_history';
+const LS_KEY_LEGACY = 'televibe_history';   // pre-rename — read once on first boot, then migrate
+
+// One-time migration: if a returning user has data under the legacy
+// 'televibe_history' key but nothing under the new key, copy it over
+// then delete the legacy key. After this runs once their history
+// is preserved transparently across the rename.
+function migrateLegacyHistoryKey(): void {
+    try {
+        const newer = localStorage.getItem(LS_KEY);
+        const older = localStorage.getItem(LS_KEY_LEGACY);
+        if (!newer && older) {
+            localStorage.setItem(LS_KEY, older);
+            localStorage.removeItem(LS_KEY_LEGACY);
+        }
+    } catch {
+        /* localStorage unavailable — nothing to migrate, no-op */
+    }
+}
+
+const lsGet  = (): HistoryItem[] => {
+    migrateLegacyHistoryKey();
+    try { const s = localStorage.getItem(LS_KEY); return s ? JSON.parse(s) : []; } catch { return []; }
+};
 const lsSet  = (items: HistoryItem[]) => { try { localStorage.setItem(LS_KEY, JSON.stringify(items)); } catch {} };
 
 async function serverGet(): Promise<HistoryItem[] | null> {

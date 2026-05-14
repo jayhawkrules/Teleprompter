@@ -34,7 +34,7 @@ export function RecordingToast({
 }: Props) {
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
   const ext = extFromMime(mimeType);
-  const filename = `televibe-${Date.now()}.${ext}`;
+  const filename = `teleprompter-${Date.now()}.${ext}`;
   const formatLabel = ext.toUpperCase();
 
   const buildFile = () => new File([blob], filename, { type: mimeType || blob.type });
@@ -45,7 +45,7 @@ export function RecordingToast({
       try {
         await navigator.share({
           files: [file],
-          title: 'TeleVibe Recording',
+          title: 'Teleprompter Recording',
           text: effectiveCaption,
         });
       } catch (e) {
@@ -69,7 +69,7 @@ export function RecordingToast({
       try {
         await navigator.share({
           files: [file],
-          title: 'TeleVibe Recording',
+          title: 'Teleprompter Recording',
           text: effectiveCaption,
         });
       } catch (e) {

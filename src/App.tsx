@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { CameraPreview } from './components/CameraPreview';
 import { Teleprompter } from './components/Teleprompter';
 import { ScriptTab } from './components/tabs/ScriptTab';
@@ -17,7 +17,7 @@ import {
   Settings, Play, Square, Zap,
   ChevronRight, Video, FileText,
   History as HistoryIcon, Share2, ChevronLeft,
-  RefreshCw, X
+  RefreshCw, X, ExternalLink
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -27,22 +27,103 @@ function extFromMime(mime: string): string {
   return 'mp4';
 }
 
+/**
+ * Read deep-link query params at SPA boot. Used by Mythie and other
+ * Toronado-portfolio apps to pre-load a script + caption + style
+ * settings via URL — see docs/strategy/social-amplification-coach-spec.md
+ * in the CastHub1 repo for the contract.
+ *
+ * Supported params:
+ *   - script   base64-encoded UTF-8 script (URL-safe; long scripts
+ *              would blow up a plain `script=` so callers base64 it)
+ *   - caption  plain URL-encoded social caption (assume <300 chars)
+ *   - speed    integer scroll speed (5-100; clamped). Optional.
+ *   - font     integer font size in px (16-72; clamped). Optional.
+ *   - return   URL the producer returns to when done (e.g.
+ *              https://mythie.app/#project/abc). Renders a
+ *              "Return to Mythie" pill in the top-right while present.
+ *   - source   free-text source identifier (e.g. "mythie",
+ *              "cuehound"). Used for analytics + the return-pill
+ *              label.
+ *
+ * All params are read once on mount; subsequent URL changes don't
+ * re-trigger. The script value here OVERRIDES the default welcome
+ * script — standalone visitors who don't pass `?script=` still see
+ * the welcome text.
+ */
+interface DeepLinkParams {
+  script:    string | null;
+  caption:   string | null;
+  speed:     number | null;
+  font:      number | null;
+  returnUrl: string | null;
+  source:    string | null;
+}
+
+function readDeepLinkParams(): DeepLinkParams {
+  if (typeof window === 'undefined') return { script: null, caption: null, speed: null, font: null, returnUrl: null, source: null };
+  const params = new URLSearchParams(window.location.search);
+
+  // Decode base64-encoded script (URL-safe base64 → standard, then atob).
+  let script: string | null = null;
+  const rawScript = params.get('script');
+  if (rawScript) {
+    try {
+      const padded = rawScript.replace(/-/g, '+').replace(/_/g, '/');
+      script = decodeURIComponent(escape(atob(padded)));
+    } catch {
+      // Fall back to treating it as a plain URL-encoded string if base64 decode fails.
+      script = rawScript;
+    }
+  }
+
+  const speed = params.get('speed');
+  const font  = params.get('font');
+  const ret   = params.get('return');
+
+  // Reject return URLs that aren't HTTPS — defensive against open-redirect
+  // abuse where a malicious caller crafts a teleprompter link that
+  // funnels the producer back to a phishing page.
+  const safeReturn = ret && /^https:\/\//i.test(ret) ? ret : null;
+
+  return {
+    script,
+    caption:   params.get('caption'),
+    speed:     speed ? Math.max(5, Math.min(100, parseInt(speed, 10) || 20)) : null,
+    font:      font  ? Math.max(16, Math.min(72,  parseInt(font,  10) || 32)) : null,
+    returnUrl: safeReturn,
+    source:    params.get('source'),
+  };
+}
+
+const DEFAULT_WELCOME_SCRIPT = "Welcome to Teleprompter. Paste your script here. The app tracks your voice and scrolls automatically as you speak — perfect for TikTok, Reels, and YouTube Shorts.";
+
 export default function App() {
-  const [script, setScript]               = useState("Welcome to TeleVibe! Paste your script here. This app will track your voice and scroll automatically as you speak. Perfect for TikTok, Reels, and YouTube Shorts. Try it out now!");
-  const [caption, setCaption]             = useState('');
+  // Read deep-link params once at mount — see readDeepLinkParams JSDoc.
+  const deepLink = useMemo(readDeepLinkParams, []);
+
+  const [script, setScript]               = useState(deepLink.script ?? DEFAULT_WELCOME_SCRIPT);
+  const [caption, setCaption]             = useState(deepLink.caption ?? '');
   const [aiTopic, setAiTopic]             = useState('');
   const [isRecording, setIsRecording]     = useState(false);
   const [isLive, setIsLive]               = useState(false);
   const [recordedBlob, setRecordedBlob]   = useState<Blob | null>(null);
   const [recordedMimeType, setRecordedMimeType] = useState<string>('video/mp4');
-  const [fontSize, setFontSize]           = useState(32);
-  const [scrollSpeed, setScrollSpeed]     = useState(20);
+  const [fontSize, setFontSize]           = useState(deepLink.font  ?? 32);
+  const [scrollSpeed, setScrollSpeed]     = useState(deepLink.speed ?? 20);
   const [opacity, setOpacity]             = useState(40);
   const [isVoiceActive, setIsVoiceActive] = useState(false);
   const [copyStatus, setCopyStatus]       = useState<'idle' | 'copied'>('idle');
   const [toasts, setToasts]               = useState<Toast[]>([]);
   const [mobileCamera, setMobileCamera]   = useState(false);
   const [updateDismissed, setUpdateDismissed] = useState(false);
+
+  // Friendly label for the return pill — "Return to Mythie" feels
+  // sleeker than "Return to https://mythie.app/...". Falls back to
+  // "Return" if no source string is provided.
+  const returnLabel = deepLink.source
+    ? `Return to ${deepLink.source.charAt(0).toUpperCase()}${deepLink.source.slice(1)}`
+    : 'Return';
 
   const effectiveCaption = caption.trim() || script.slice(0, 150);
 
@@ -94,7 +175,7 @@ export default function App() {
     const url = URL.createObjectURL(recordedBlob);
     const a   = document.createElement('a');
     a.href     = url;
-    a.download = `televibe-recording-${Date.now()}.${ext}`;
+    a.download = `teleprompter-recording-${Date.now()}.${ext}`;
     a.click();
     URL.revokeObjectURL(url);
   }, [recordedBlob, recordedMimeType]);
@@ -230,6 +311,21 @@ export default function App() {
   return (
     <div className="bg-[#0a0a0a] text-zinc-100 font-sans selection:bg-zinc-700" style={{ height: '100dvh', display: 'flex', flexDirection: 'column' }}>
 
+      {/* Deep-link return pill — fixed top-right, always visible while
+          the producer is in this session. Tap to bail back to the
+          calling app (Mythie / CueHound / etc.) without losing the
+          current recording: the producer can finish recording, post
+          it to TikTok, AND tap return — the link doesn't auto-fire. */}
+      {deepLink.returnUrl && (
+        <a
+          href={deepLink.returnUrl}
+          className="fixed top-3 right-3 z-[200] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-900/80 hover:bg-zinc-800 backdrop-blur-md border border-zinc-700 text-xs font-bold text-zinc-100 shadow-lg"
+        >
+          <ChevronLeft className="w-3.5 h-3.5" /> {returnLabel}
+          <ExternalLink className="w-3 h-3 opacity-60" />
+        </a>
+      )}
+
       <AnimatePresence>
         {mobileCamera && (
           <motion.div
@@ -259,7 +355,7 @@ export default function App() {
                 <Video className="w-5 h-5 text-black" />
               </div>
               <div>
-                <h1 className="text-xl font-bold tracking-tight leading-none">TeleVibe</h1>
+                <h1 className="text-xl font-bold tracking-tight leading-none">Teleprompter</h1>
                 <p className="text-[10px] text-zinc-600 font-mono mt-0.5 leading-none">{formatVersion()}</p>
               </div>
             </div>

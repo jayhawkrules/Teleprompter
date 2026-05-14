@@ -23,14 +23,24 @@ Vite + React + TypeScript + Tailwind + Radix (`components.json`). Express dev se
 
 ## Locked decisions (do not change without conversation)
 
-- **Standalone app, scope-limited** — don't merge with CueHound. Different product, different audience.
+- **Standalone app, scope-limited** — don't merge with CueHound. Different product, different audience. Mythie consumes the deployed URL via `?script=` deep-link only; no code merger.
 - **Gemini API for AI** — not Anthropic (kept lightweight; if Anthropic is needed, run the integration through a metered proxy)
+- **Repo is PUBLIC as of 2026-05-14** — source visible. LICENSE is proprietary all-rights-reserved. No copyleft / open-source obligations.
+- **Product name is "Teleprompter"** (renamed from TeleVibe 2026-05-14). One-time localStorage migration in `src/hooks/useAI.ts` preserves user history across the rename.
+
+## Integration consumers
+
+- **Mythie** (CastHub1 repo, private) — Social Amplification Coach Phase 1 deep-links via `?script=&caption=&speed=&font=&return=&source=mythie`. Producer reads the AI-drafted casting-call script aloud, records via the camera, posts to TikTok (or saves locally), returns to Mythie. Spec: `docs/strategy/social-amplification-coach-spec.md` in CastHub1.
+- **CueHound** (RunOfShow repo) — has its own native mobile teleprompter; doesn't consume this one today. If a use case emerges, deep-link via the same `?script=` contract.
+
+The deep-link contract is documented in `README.md` under "Deep-link integration mode". Adding a new param? Add it to the `readDeepLinkParams()` function in `src/App.tsx` AND the README's param table — both must stay in sync.
 
 ## Stop and ask before
 
-- Adding Firebase / multi-user features (this is single-user by design)
+- Adding Firebase Auth / multi-user features (this is single-user by design)
 - Hooking it into CueHound's cue engine (different products)
 - Publishing to App Store (no commitment yet — that's a CueHound mobile decision)
+- Adding a build-time secret to the bundle (the repo is public; secrets in the bundle are public)
 
 ## Claude Code Skills (cross-repo, cross-machine)
 

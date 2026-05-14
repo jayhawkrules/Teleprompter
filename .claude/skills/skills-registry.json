@@ -1,11 +1,11 @@
 {
   "schema_version": "1.0",
-  "generated_at": "2026-05-12",
-  "total_skills": 35,
+  "generated_at": "2026-05-14",
+  "total_skills": 36,
   "categories": {
-    "ai_safety_workflow": ["safe-edit-policy", "fresh-chat-handoff", "cowork-kickoff", "phased-shipping"],
+    "ai_safety_workflow": ["safe-edit-policy", "fresh-chat-handoff", "cowork-kickoff", "phased-shipping", "shipping-efficiency-budget"],
     "testing_qa": ["qa-hardening", "human-simulation-testing", "production-error-to-regression"],
-    "ci_cd_infrastructure": ["ci-gate-builder", "firebase-hosting-security", "firestore-rbac-helpers", "firebase-actions-deploy", "database-link-and-permissions-audit"],
+    "ci_cd_infrastructure": ["ci-gate-builder", "firebase-hosting-security", "firestore-rbac-helpers", "firebase-actions-deploy", "database-link-and-permissions-audit", "shipping-efficiency-budget"],
     "security": ["vendor-consolidation-policy", "payment-webhook-safety", "vendor-onboarding-walkthrough"],
     "seo": ["seo-aeo-optimizer"],
     "product_monetization": ["monetization-readiness-review", "stripe-new-app-setup", "analytics-event-map"],
@@ -527,6 +527,21 @@
       "version": "1.0.0",
       "promoted_from": "CastHub1 local skill",
       "is_new_2026_05_12": true
+    },
+    {
+      "name": "shipping-efficiency-budget",
+      "path": "shipping-efficiency-budget/",
+      "purpose": "Two-pillar playbook for not wasting CI minutes or reviewer attention. Pillar 1 — consolidate scheduled GitHub Actions (collapse N scheduled workflows into one workflow-with-branched-jobs gated by github.event.schedule, drop crons that should be backend self-polls, weekly-not-daily where usage allows). Pillar 2 — bundle related PRs via a 10-second pre-flight check + combine-or-split decision tree, with an end-of-session retro to catch fragmentation drift",
+      "stack_support": ["A", "B", "C", "D", "E"],
+      "when_to_use": "before opening any PR (Pillar 2 pre-flight check), quarterly portfolio audit of scheduled workflows (Pillar 1), about to push the 3rd small PR in a row to the same area, CI minutes trending up, user mentions saving Actions or loading PRs better",
+      "when_not_to_use": "user has explicitly asked for one-PR-per-change, hotfix that can't wait for a follow-up, change needs different review approval (legal vs feature)",
+      "related": ["safe-edit-policy", "phased-shipping", "ci-gate-builder", "portfolio-health-audit", "repo-health-audit"],
+      "revenue_impact": "direct cost reduction — GitHub Actions minutes are billed past free tier; secondary indirect impact via faster ship velocity (less reviewer queue thrashing)",
+      "safety_impact": "medium — over-fragmented PRs increase rebase / conflict surface; consolidated cron workflows have a wider blast radius if broken (mitigation guidance in the skill)",
+      "applies_to_repo_classes": ["A", "B", "C", "D", "E"],
+      "category": "ai_safety_workflow",
+      "version": "1.0.0",
+      "is_new_2026_05_14": true
     }
   ]
 }

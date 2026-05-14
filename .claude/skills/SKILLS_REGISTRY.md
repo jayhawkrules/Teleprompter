@@ -2,8 +2,8 @@
 
 Machine + human-readable index of every skill in this hub. Sister file: `skills-registry.json` (same data, machine format).
 
-**Total skills:** 34 (13 pre-existing + 13 new in 2026-05-10 upgrade + 2 added 2026-05-10 observability + 1 strategic added 2026-05-10 + 1 legal added 2026-05-11 + 1 casting added 2026-05-11 + 1 design added 2026-05-12 + 1 casting-research added 2026-05-12 + 1 database-link-and-permissions-audit added 2026-05-12)
-**Last regen:** 2026-05-12
+**Total skills:** 36 (13 pre-existing + 13 new in 2026-05-10 upgrade + 2 added 2026-05-10 observability + 1 strategic added 2026-05-10 + 1 legal added 2026-05-11 + 1 casting added 2026-05-11 + 1 design added 2026-05-12 + 1 casting-research added 2026-05-12 + 1 database-link-and-permissions-audit added 2026-05-12 + 1 phased-shipping added 2026-05-12 + 1 shipping-efficiency-budget added 2026-05-14)
+**Last regen:** 2026-05-14
 
 ## Schema
 
@@ -54,6 +54,17 @@ For each skill, the registry tracks:
 - **Related:** `fresh-chat-handoff`
 - **Revenue impact:** indirect
 - **Safety impact:** high — embeds safety contract in remote sessions
+- **Applies to:** A, B, C, D, E
+
+#### shipping-efficiency-budget
+- **Path:** `shipping-efficiency-budget/`
+- **Purpose:** Two-pillar playbook for not wasting CI minutes or reviewer attention. Pillar 1 — consolidate scheduled GitHub Actions (collapse N scheduled workflows into one workflow-with-branched-jobs gated by `github.event.schedule`, drop crons that should be backend self-polls, weekly-not-daily where usage allows). Pillar 2 — bundle related PRs via a 10-second pre-flight check + combine-or-split decision tree, with end-of-session retro to catch fragmentation drift.
+- **Stack support:** all
+- **When to use:** before opening any PR (Pillar 2 pre-flight check), quarterly portfolio audit of scheduled workflows (Pillar 1), about to push the 3rd small PR in a row to the same area, CI minutes trending up, user mentions saving Actions or loading PRs better
+- **When not to use:** user explicitly asked for one-PR-per-change, hotfix that can't wait, change needs different review approval (legal vs feature)
+- **Related:** `safe-edit-policy`, `phased-shipping`, `ci-gate-builder`, `portfolio-health-audit`, `repo-health-audit`
+- **Revenue impact:** direct cost reduction — GitHub Actions minutes are billed past free tier; secondary indirect impact via faster ship velocity
+- **Safety impact:** medium — over-fragmented PRs increase rebase/conflict surface; consolidated cron workflows have wider blast radius if broken (mitigation guidance in skill)
 - **Applies to:** A, B, C, D, E
 
 ### Testing & QA

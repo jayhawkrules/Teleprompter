@@ -2,6 +2,7 @@
   "schema_version": "1.0",
   "generated_at": "2026-05-14",
   "total_skills": 36,
+  "ui_design_web_apps_version": "3.0",
   "categories": {
     "ai_safety_workflow": ["safe-edit-policy", "fresh-chat-handoff", "cowork-kickoff", "phased-shipping", "shipping-efficiency-budget"],
     "testing_qa": ["qa-hardening", "human-simulation-testing", "production-error-to-regression"],

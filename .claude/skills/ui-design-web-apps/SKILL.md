@@ -1,17 +1,19 @@
 ---
 name: ui-design-web-apps
-version: 2
-description: A comprehensive Claude skill for designing production-grade web application UIs. Grounded in UX research, cognitive science, and real-world product best practices. Use this skill whenever designing interfaces, component systems, flows, or screen layouts for web apps. Covers flow design, component standards, navigation, state design, accessibility, motion, responsiveness, SaaS-specific patterns, and a full pre-ship checklist.
+version: 3
+description: A comprehensive Claude skill for designing production-grade web application UIs. Grounded in UX research, cognitive science, Apple HIG, and real-world product best practices. Use this skill whenever designing interfaces, component systems, flows, or screen layouts for web apps. Covers flow design, Apple-grade materials, the no-chrome doctrine, component standards, navigation at scale, state design, accessibility, motion-as-language, responsiveness, SaaS-specific patterns, and a full pre-ship checklist.
 ---
 
 # Web App UI Design Skill
-## Research-Grounded. Flow-First. User-Centred.
+## Apple-Grade. Research-Grounded. Flow-First.
 
-This skill encodes the best available UX research, cognitive psychology, and real-world product design principles for web application interfaces. Every rule traces back to a behavioural pattern, usability study, or validated design system from a leading product team (Linear, Stripe, Vercel, Notion, Figma).
+This skill encodes the best available UX research, cognitive psychology, Apple HIG, and real-world product design principles for web application interfaces. Every rule traces back to a behavioural pattern, usability study, or validated design system from a leading product team.
 
 **Use this skill when:** designing screens, flows, components, navigation, forms, onboarding, empty states, error handling, notifications, SaaS upgrade paths, or any interactive UI element for a web application.
 
-**Reference products to study**: Linear (speed, keyboard-first), Stripe Dashboard (data clarity, trust), Vercel (developer UX, density), Notion (flexibility, empty states), Figma (canvas UI, collaboration states).
+**Reference products to study**: Linear (speed, keyboard-first, command palette), Apple HIG (materials, hierarchy via weight, motion as language), Vercel (developer UX, density, no-chrome), Stripe Dashboard (data clarity, conditional nav), Notion (flexibility, empty states), Raycast (palette doctrine), Figma (canvas UI, collaboration states).
+
+**v3.0 changes (2026-05-14)** — added Apple-grade material/translucency cookbook (§2.5), the no-chrome doctrine (§5.5), navigation-at-scale playbook (§4.5), hierarchy-via-weight typography rewrite, motion verb test. Killed: 1.6 line-height default, 600ms count animations, 4px backdrop-blur, dated shimmer recipe.
 
 ---
 
@@ -56,16 +58,62 @@ Getting visual weight right is the difference between a UI that feels clear and 
 
 **Rule**: If two elements feel the same weight, one of them needs to change. Visual hierarchy only works through contrast.
 
-### Density Modes
-Web apps should offer or default to one density based on use case:
+### The 4/8 Spacing Grid (Apple/Vercel-aligned)
 
-| Mode | Line height | Padding | Font | Use for |
-|---|---|---|---|---|
-| **Comfortable** | 1.6 | `--space-4` to `--space-6` | `--text-base` (16px) | Consumer apps, settings, forms |
-| **Compact** | 1.4 | `--space-2` to `--space-3` | `--text-sm` (14px) | Data tables, CRMs, dashboards |
-| **Dense** | 1.3 | `--space-1` to `--space-2` | `--text-xs` (12px) | Code editors, spreadsheets, terminal UIs |
+Every spacing value in the app must be a multiple of 4, with multiples of 8 strongly preferred. **Off-grid values (10px, 13px, 15px, 18px, 22px) are forbidden.** The eye registers irregular spacing as "amateur" even when the brain can't name it. This is a lint-able rule.
 
-Never mix density modes within a single view. Pick one and commit.
+```css
+:root {
+  /* 8pt grid. 4px is the half-step for icon micro-adjustments only. */
+  --space-0:    0;
+  --space-0-5:  2px;   /* icon nudge only */
+  --space-1:    4px;   /* icon-to-text gap, dense table cells */
+  --space-2:    8px;   /* base unit — tight inline spacing */
+  --space-3:    12px;  /* button padding-y, compact stack gap */
+  --space-4:    16px;  /* DEFAULT card padding, form field gap */
+  --space-5:    20px;  /* button padding-x, section heading gap */
+  --space-6:    24px;  /* card-to-card gap, comfortable form gap */
+  --space-8:    32px;  /* section-internal gap */
+  --space-10:   40px;  /* section-to-section gap, page header bottom */
+  --space-12:   48px;  /* major section break */
+  --space-16:   64px;  /* page-level vertical rhythm */
+  --space-24:   96px;  /* hero/marketing only — not for app chrome */
+  --space-32:   128px; /* hero/marketing only */
+
+  /* Line-heights — TIGHTER than legacy web defaults. Apps are not blogs. */
+  --leading-tight:    1.15;  /* display headings */
+  --leading-snug:     1.25;  /* page titles, section headings */
+  --leading-normal:   1.45;  /* body in apps (was 1.6 in legacy skill) */
+  --leading-relaxed:  1.6;   /* long-form prose only — never app chrome */
+
+  /* Letter-spacing — Apple/Geist-style negative tracking on display */
+  --tracking-tighter: -0.025em;  /* --text-3xl and up */
+  --tracking-tight:   -0.015em;  /* --text-xl, --text-2xl */
+  --tracking-normal:  0;         /* body */
+  --tracking-wide:    0.04em;    /* uppercase eyebrow/label */
+}
+```
+
+**When to use which spacing token:**
+
+| Token | Use for |
+|---|---|
+| `--space-1` (4px) | Icon-to-text gap inside a button, dense table-cell padding |
+| `--space-2` (8px) | Inline chip/tag padding, dense table row padding |
+| `--space-3` (12px) | Button padding-y (default size), compact form field gap |
+| `--space-4` (16px) | **DEFAULT card padding**, form field vertical gap, list item padding |
+| `--space-5` (20px) | Button padding-x, gap between heading and content below |
+| `--space-6` (24px) | Card-to-card grid gap, comfortable form field gap |
+| `--space-8` (32px) | Section-internal vertical gap (above a fieldset legend) |
+| `--space-10` (40px) | Section-to-section vertical gap |
+| `--space-12` (48px) | Major page section break |
+| `--space-16` (64px) | Page top/bottom padding on desktop |
+
+**Internal padding ≤ external margin.** A card with `padding: 16px` should sit in a grid with ≥ `24px` gaps. Violating this makes elements feel cramped and merged.
+
+### Density modes (legacy reference)
+
+The grid above replaces the old "Comfortable / Compact / Dense" triplet. If you must classify, the new defaults are: web app body line-height `1.45`, button height `36px`, default card padding `16px`. Never mix densities within a single view.
 
 ### Colour in UI (The Restraint Rule)
 Colour in a web app UI is not decoration — it is a signal. Use it only to:
@@ -80,21 +128,129 @@ Colour in a web app UI is not decoration — it is a signal. Use it only to:
 
 **The one-accent rule**: In any single viewport, only ONE non-neutral accent colour should appear in UI chrome (buttons, active states, badges). Additional colours are reserved for status signals and data visualisation only.
 
-### Typography in Web Apps
-Web apps cap display type at `--text-xl` (24–36px). There are no heroes, no splash text, no editorial moments — just functional hierarchy:
+### Typography in Web Apps (Apple-grade, weight-driven)
+
+Web apps cap display type at `--text-xl` (24px). There are no heroes, no splash text, no editorial moments — just functional hierarchy. **Hierarchy is carried by weight, not size.** Apple's iOS Headline (17pt Semibold) and Body (17pt Regular) are the *same size* — only weight differs. This is the single biggest "amateur web vs Apple-grade" tell, and the easiest fix.
 
 ```
-Page title        --text-xl, font-weight: 600    One per page. The "where am I" anchor.
-Section heading   --text-lg, font-weight: 600    Groups of related content.
-Subheading        --text-base, font-weight: 600  Cards, form sections, list headers.
-Body              --text-base, font-weight: 400  All descriptive content.
-UI chrome         --text-sm, font-weight: 400    Buttons, nav links, labels.
-Metadata          --text-xs, font-weight: 400    Timestamps, counts, secondary labels.
+Page title        --text-xl  (24px), weight 600, leading-snug    One per page. The "where am I" anchor.
+Section heading   --text-base (16px), weight 600, leading-snug    Groups of related content.
+Card title        --text-base (16px), weight 600, leading-snug    Same size as body — weight is the signal.
+Body              --text-base (16px), weight 400, leading-normal  All descriptive content.
+UI chrome         --text-sm  (14px), weight 500, leading-snug     Buttons, nav links, labels.
+Metadata          --text-xs  (12px), weight 400, leading-snug     Timestamps, counts, secondary labels.
+Eyebrow / label   --text-xs  (12px), weight 600, tracking-wide    Uppercase section markers.
 ```
 
-- Use **weight** to create hierarchy, not size. A bold `--text-base` heading and a regular `--text-base` body read as different levels without changing the font size token.
-- **Never use more than 4 distinct text styles** on a single screen.
+- **Hierarchy via weight, not size.** A `font-weight: 600` `--text-base` card title and a `font-weight: 400` `--text-base` body read as different levels without a size jump. Reserve size jumps for true page-level hierarchy (h1 only).
+- **Never use more than TWO distinct font sizes on a single screen** — the page title and everything else.
+- **Letter-spacing tightens at display sizes** (Apple SF Pro auto-adjusts, Geist hand-crafts):
+  - `--text-2xl` and up → `letter-spacing: -0.025em`
+  - `--text-xl` → `letter-spacing: -0.015em`
+  - Body (`--text-base` and below) → `letter-spacing: 0`
+  - Uppercase eyebrow labels → `letter-spacing: 0.04em`
+- **Line-height tight, not loose** — apps aren't blogs (see Density Modes below). `1.45` for body, `1.25` for headings. `1.6` is reserved for long-form prose only.
 - **Muted colour for secondary text**: `--color-text-muted` for metadata, timestamps, and helper text. `--color-text-faint` only for decorative/placeholder text.
+
+---
+
+## 2.5 Apple-Grade Materials & Surface Layers
+
+Apple Liquid Glass (iOS 26 / macOS 26) made translucent materials a first-class layering tool. They are NOT decoration. Used right, they communicate "this surface floats above content"; used wrong, they look amateur and break accessibility.
+
+### When to use translucent materials
+
+- **Top navigation bar** (sticky over scrolling content) — the canonical Apple/iOS use case
+- **Sticky toolbars** (filter bar, bulk-actions bar)
+- **Command palette / Cmd+K overlay**
+- **Modal/drawer backdrops** (the dimming layer behind, not the modal surface itself)
+- **Floating popovers / tooltips over content**
+
+### When to NEVER use translucent materials
+
+- Cards in a grid
+- Form fields, inputs, selects
+- Body content surfaces (the page background)
+- Inside another translucent surface (no nesting — Apple's explicit Liquid Glass rule)
+- Over video or animated backgrounds (refraction creates visual chaos)
+- On surfaces persistent < 200ms (toasts, transient indicators — the GPU cost isn't earned)
+
+### Production CSS — Top nav (Apple recipe)
+
+```css
+.app-nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+
+  /* Translucent floor — meets 4.5:1 contrast post-blur */
+  background-color: color-mix(in srgb, var(--color-surface) 72%, transparent);
+
+  /* The blur — Apple "regular material" equivalent */
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+
+  /* Hairline divider, not a shadow */
+  border-bottom: 1px solid var(--color-border-subtle);
+
+  /* Fallback for browsers without backdrop-filter */
+  @supports not (backdrop-filter: blur(20px)) {
+    background-color: var(--color-surface);
+  }
+}
+```
+
+`saturate(180%)` is the Apple trick that keeps blurred wallpaper vibrant rather than washed-out.
+
+### Production CSS — Modal backdrop
+
+```css
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background-color: rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(8px);                /* never less than 8px — below that the GPU cost isn't earned */
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.modal-surface {
+  /* The modal itself is OPAQUE — translucency only on the backdrop */
+  background-color: var(--color-surface-elevated);
+  border-radius: var(--radius-lg);           /* 12px */
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 16px 48px rgba(0, 0, 0, 0.12);
+}
+```
+
+### Translucency reference table
+
+| Use case | `blur()` | `saturate()` | Floor opacity |
+|---|---|---|---|
+| Top nav bar | 20px | 180% | 72% |
+| Bottom tab bar (mobile) | 24px | 180% | 70% |
+| Command palette | 32px | 180% | 80% |
+| Modal backdrop | 8px | — | 32% black |
+| Sticky filter toolbar | 16px | 160% | 75% |
+| Floating popover | 24px | 180% | 80% |
+
+### The 4.5:1 contrast floor
+
+Translucent surfaces still need to meet WCAG AA contrast (4.5:1 for body text) **after the blur is applied**. This means a `background-color` floor (e.g., `rgba(255,255,255,0.72)` light / `rgba(20,20,22,0.72)` dark) is not optional — pure transparency fails accessibility on busy content.
+
+### Honor `prefers-reduced-transparency`
+
+```css
+@media (prefers-reduced-transparency: reduce) {
+  .app-nav,
+  .modal-backdrop,
+  .command-palette {
+    backdrop-filter: none;
+    background-color: var(--color-surface);
+  }
+}
+```
 
 ---
 
@@ -190,6 +346,132 @@ Structure:
 - Keyboard-navigable: Arrow keys + Enter to select, Escape to dismiss
 - Fuzzy search across all actions, routes, and records
 - Keyboard shortcut shown next to common actions
+
+---
+
+## 4.5 Navigation at Scale (12+ Features)
+
+When an app passes ~9 primary nav items, the sidebar stops being a navigation aid and starts being a wall of words. The cure is not "make it scrollable" — the cure is structural. Below is the playbook used by Linear, Notion, Stripe, Slack, and macOS System Settings.
+
+### The 9-item rule
+
+Once the primary sidebar reaches ~9 items, **stop adding** and start restructuring. Restructure via one of:
+
+1. **Group by mental model.** Cluster items into sections with a header (`WORK` / `GROW` / `ADMIN`). Sections become the unit of navigation. Slack and Notion do this; the header itself is collapsible.
+2. **Promote object hierarchy out of features.** If your sidebar has both "Projects" (a feature) and a project tree below it (objects), the tree replaces the feature. Linear's `Teams > Team A > Projects/Issues/Cycles` is one expandable tree, not three nav items.
+3. **Split workspaces.** Daily-work surfaces and configuration surfaces should not share a sidebar. Move Settings to a full-screen separate surface launched via gear icon, not a sidebar tab.
+4. **Merge twins.** Two adjacent items with similar verbs ("Search talent" + "Search internet") should be one page with a tab toggle, not two nav items.
+
+### Section visibility rules
+
+| Section type | Default state | Example |
+|---|---|---|
+| Daily-touch surfaces (>1×/session) | Always visible | Inbox, Tasks, primary Work pages |
+| Object trees that grow over time | Collapsible, expanded | Projects, Teamspaces, Boards |
+| Role/plan-gated items | Conditionally rendered (hidden if not entitled) | Admin tools, Studio-only features |
+| <1×/week destinations | Hidden in "More" overflow or moved out of sidebar | Reports, Audit log, Feedback |
+
+### Conditional rendering, not greying
+
+Plan-gated features should **not appear at all** for users without entitlement. Greyed-out items teach users the app is full of locked doors and erode trust. The only globally-visible upsell entrypoint should be a single "Compare plans" link in the bottom utilities. Discovery of locked features happens contextually — when the user hits the wall, the paywall modal lists every higher-tier feature they'd unlock. Linear, Stripe, and Notion all do conditional, never greyed.
+
+### Command palette: supplementary, never primary
+
+A `Cmd+K` palette is the right secondary door for power users. It is never the only door. Assume <50% of paying B2B-non-developer users will discover it. Always ship a visible sidebar even if the palette is great. Make it discoverable with a header pill that shows the keyboard hint (`Search anything ⌘K`).
+
+### Settings is its own app
+
+Once Settings has more than ~5 sub-pages, it becomes its own app inside your app:
+- Launch it from a gear icon in the bottom-left or avatar menu, **not** as a sidebar tab.
+- Inside Settings, use its own left-rail nav with **groups** (Account / Workspace / Integrations / Data / Advanced).
+- Each group has its own landing page summarising what's inside — not a "pick a sub-tab" blank screen.
+- A search box at the top filters across all settings (macOS Sequoia pattern). For 30+ entries, search beats hierarchy.
+- Order groups by frequency, not alphabetical. Account first, Advanced last.
+- Persist last-visited sub-tab so a user who lives in "Members & roles" lands there on next open.
+- Closing Settings returns the user to where they were, not Home.
+
+### Default landing — action queue, not stats dashboard
+
+Returning users land on a personalised, action-oriented surface (`Inbox` / `My Work` / `Triage`). Never on a chrome-heavy "Dashboard" full of vanity metrics. The morning question is "what do I do next?" not "how is the business doing?" — Linear's Inbox is the gold standard here.
+
+First-time users get a Dashboard for orientation. Returning users get the Inbox.
+
+### Anti-patterns to avoid
+
+- **Flat tab strip with >7 tabs** — wraps awkwardly, hides items behind a "more" chevron, kills mental model. Replace with grouped sub-nav.
+- **"Recent" in the primary sidebar** — adds noise, position changes day-to-day, breaks muscle memory. Recents belong inside Cmd+K and on the Home surface, not in the nav.
+- **Greyed-out plan-gated items** — always conditionally render; never grey.
+- **Default-landing on a stats Dashboard** — default to an action queue.
+- **Sidebar item with sub-tabs that change the page header** — pick one level of hierarchy per click.
+- **"Feedback" and "Help" in the primary sidebar** — both belong in the avatar menu or a `?` icon in the header. Real users hit them <1×/month.
+
+### Decision tree
+
+```
+Q1: Is this surface visited by the median user >1×/session?
+    YES → Primary sidebar, top, always visible.
+    NO  → continue.
+
+Q2: Is it a "do work" or a "configure" surface?
+    DO WORK     → Primary sidebar, mid, possibly inside a collapsible group.
+    CONFIGURE   → Settings hub. Not in sidebar.
+
+Q3: Is it gated by a plan or role?
+    YES → Conditionally render only when entitled. Do NOT grey out.
+    NO  → continue.
+
+Q4: Is it actually a leaf of an existing object?
+    YES (e.g. Estimates is per-project) → Move into the parent's detail view.
+    NO  → continue.
+
+Q5: Is it used <1×/week by most users?
+    YES → Collapsible group "More" or move to header utilities.
+    NO  → Primary sidebar.
+```
+
+### When to redesign
+
+Trigger a sidebar redesign when:
+- Primary item count crosses 9.
+- A new feature ships and you cannot articulate which existing item it sits "next to."
+- A user-research session shows >1 user asking "wait, which one is this?"
+- Two adjacent items share a verb (Search-this vs Search-that, View-this vs View-that).
+
+### Linear's Command Palette — gold-standard spec
+
+The reference implementation. Copy these specifics directly when building Cmd+K:
+
+**Trigger:** `Cmd+K` (Mac) / `Ctrl+K` (Win/Linux). Captured globally — works from any view.
+
+**Visual:**
+- Centered, **640px wide**, max-height 480px, positioned at **20vh from top** (Apple-style "weight to upper third" — not center)
+- Translucent surface — `backdrop-filter: blur(32px) saturate(180%)`, background `rgba(255,255,255,0.80)` light / `rgba(20,20,22,0.80)` dark
+- Border-radius: `var(--radius-lg)` (12px)
+- Shadow: `0 4px 8px rgba(0,0,0,0.04), 0 24px 64px rgba(0,0,0,0.16)`
+- Search input: 48px tall, no border, font-size **16px** (prevents iOS zoom), placeholder "Type a command or search..."
+- Results: **36px row height**, 12px horizontal padding, icon-left-label-right, keyboard shortcut shown right-aligned in `--text-xs` muted
+- Active row: `background: var(--color-surface-dynamic)` — no border, no fill change
+
+**Behavior:**
+- Opens with focus on input, last query NOT pre-filled (clean slate)
+- Fuzzy match via [`command-score`](https://github.com/farzher/fuzzysort) — Superhuman threshold > 0.0015
+- Group order: `Recent` (top, max 3) → `Go to...` → `Create...` → `Actions` → `Settings`
+- Arrow keys navigate, Enter executes, Escape dismisses, Tab does nothing (don't compete with browser focus)
+- Aliases: each command has `aliases: string[]` — "Archive" matches "Mark Done", "Delete" matches "Trash"
+- Recent commands ranked by usage frequency, decayed weekly
+- **Context-aware boost** — when viewing a casting call, top results include "Apply to this call" — context commands get `score * 1.5` boost
+
+**Performance:**
+- Open animation: **150ms** `cubic-bezier(0.16, 1, 0.3, 1)` — scale from 0.96 → 1.0 + opacity 0 → 1
+- Backdrop fade: 100ms ease-out
+- Results render < 16ms (one frame); debounce typing only if command list > 500 items
+- Keyboard navigation must register within 50ms
+
+**Accessibility:**
+- `role="combobox"` on input, `role="listbox"` on results, `role="option"` on each row
+- `aria-activedescendant` updates on arrow keys
+- Screen reader announces "Command palette open. 12 results."
+- Reduced-motion: skip the scale animation, just fade
 
 ---
 
@@ -290,7 +572,7 @@ Tables are where complex apps win or lose users.
 - Close on backdrop click (modals only, not drawers — accidental tap risk)
 - Trap focus inside while open
 - Return focus to trigger element on close
-- Backdrop: `background: oklch(0 0 0 / 0.4)` + optional `backdrop-filter: blur(4px)` for depth
+- Backdrop: `background: oklch(0 0 0 / 0.32)` + `backdrop-filter: blur(8px)` (see §2.5 — never less than 8px; below that the GPU cost isn't earned and the blur isn't perceptible)
 - Never nest modals — if an action inside a modal opens another modal, restructure the flow
 
 ### Tooltips & Popovers
@@ -331,6 +613,129 @@ A notification is NOT a toast. Keep these patterns distinct:
 - For: degraded service, offline status, billing warnings, important announcements
 - Position: below the top nav, above page content
 - One banner maximum at a time. If two compete, show the higher severity one.
+
+---
+
+## 5.5 The "No Chrome" Doctrine
+
+Web apps over-decorate. Apple under-decorates. Naming the doctrine makes it enforceable in PR review.
+
+### One accent color per viewport
+
+In any single viewport, exactly ONE non-status accent colour appears in UI chrome (buttons, active states, badges). Status colours (success/warning/error) don't count and are reserved for state. If a screen has two accent colours, kill one. Vercel proves the doctrine — the dashboard is literally pure black + white + one functional blue.
+
+### Hairline borders only
+
+```css
+:root {
+  --color-border-hairline: color-mix(in srgb, currentColor 6%, transparent);   /* light mode */
+  --color-border-strong:   color-mix(in srgb, currentColor 12%, transparent);  /* hover/active state */
+}
+```
+
+- All resting borders are `1px` at ~6% opacity.
+- Hover/active states bump to ~12% opacity, never thicker.
+- **2px borders are forbidden** in app chrome. The only legitimate 2px is the focus ring.
+
+### Two shadow tokens. Total.
+
+```css
+:root {
+  /* The only two shadow tokens in the system. */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);                                  /* resting elevation */
+  --shadow-lg: 0 1px 2px rgba(0, 0, 0, 0.04), 0 16px 48px rgba(0, 0, 0, 0.12); /* floating (modals, popovers) */
+}
+```
+
+Mid-shadows (`--shadow-md`) and coloured/coloured-blur shadows are killed. Heavy shadows date a UI to circa-2018 Material Design.
+
+### Four radius tokens. Total.
+
+```css
+:root {
+  --radius-sm:   6px;   /* inline chips, badges */
+  --radius-md:   8px;   /* buttons, inputs */
+  --radius-lg:   12px;  /* cards, modals */
+  --radius-full: 9999px;/* pills, avatars */
+}
+```
+
+Random radii (5px button, 7px card, 9px modal) read as careless. Pick from the four. Forbid arbitrary values.
+
+### No always-on dividers between sections
+
+Cards in a grid don't need horizontal lines between rows. Sections don't need `<hr>` between them. Let `gap` and whitespace do the work. A divider should only appear if visual grouping fails without it (rare).
+
+### Optical alignment beats geometric alignment
+
+- Icons next to text: `vertical-align: -0.125em` (or `display: inline-flex; align-items: center`)
+- Buttons with leading icons: extra trailing padding (`pr-3` not `pr-2`) to balance the icon's leftward weight
+- Centered text in a circular avatar: optically centered (often `transform: translateY(-1px)`) since cap-height isn't visually centered in the circle
+
+### Cards inherit no chrome
+
+```css
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-hairline);
+  border-radius: var(--radius-lg);             /* 12px */
+  padding: var(--space-4);                     /* 16px */
+  /* NO shadow at rest. Shadow appears ONLY on hover for clickable cards. */
+  transition: border-color 120ms ease-out, box-shadow 120ms ease-out;
+}
+
+.card.is-clickable:hover {
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.card-title {
+  font-size: var(--text-base);                 /* 16px — same as body */
+  font-weight: 600;                            /* WEIGHT carries hierarchy */
+  line-height: var(--leading-snug);            /* 1.25 */
+  letter-spacing: var(--tracking-tight);       /* -0.015em */
+  margin: 0 0 var(--space-1) 0;                /* 4px */
+}
+
+.card-body {
+  font-size: var(--text-sm);                   /* 14px */
+  line-height: var(--leading-normal);          /* 1.45 */
+  color: var(--color-text-muted);
+  margin: 0;
+}
+```
+
+This is the Vercel-style reference card. Note: card title is the SAME size as body. Hierarchy via weight. No shadow at rest. Hairline border. Predictable radius.
+
+### Status badges — semantic only, never categorical
+
+Three variants. Period. No theme decoration, no brand-color badges.
+
+```css
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);              /* 6px */
+  font-size: var(--text-xs);                    /* 12px */
+  font-weight: 500;
+  border: 1px solid currentColor;
+  background-color: color-mix(in srgb, currentColor 10%, transparent);
+}
+.badge--neutral { color: var(--color-text-muted); }
+.badge--success { color: var(--color-success); }   /* green */
+.badge--warning { color: var(--color-warning); }   /* amber */
+.badge--danger  { color: var(--color-error); }     /* red */
+
+/* Optional dot indicator — Apple Mail / Linear pattern */
+.badge::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor; opacity: 0.9;
+}
+```
+
+Every badge is the same shape and size. Color is the only differentiator. Color always means a state (never a category). For "feature badge" or "tier badge" needs, use a neutral chip with text label — not a coloured badge.
 
 ---
 
@@ -387,7 +792,7 @@ Offline        No network connection       Offline banner + cached data
 ### Loading States
 - **Skeleton loaders over spinners** for all content that takes >200ms
 - Skeleton exactly mirrors the component shape (circular for avatars, varying-width bars for text, full-width rectangle for images)
-- Shimmer: `background: linear-gradient(90deg, var(--color-surface-offset) 25%, var(--color-surface-dynamic) 50%, var(--color-surface-offset) 75%)` at 200% width, animated left to right over 1.5s
+- Skeleton fill: solid `var(--color-surface-offset)` with a *subtle* opacity pulse (`opacity: 0.6 → 1.0 → 0.6` over 2s, `ease-in-out`). Apple-grade restraint. The 2018-era shimmer wash (linear-gradient sweep) is killed — busy and dated.
 - **Optimistic updates**: Update UI immediately on user action, confirm/rollback from server. Users perceive instant response even when the server takes 300ms.
 - Full-page loading: skeleton the entire layout (header, sidebar, content area) — never a centred spinner on white
 
@@ -457,6 +862,21 @@ Accessibility is not a separate concern — it is a dimension of quality. These 
 2. **Elements move from somewhere to somewhere**: modals don't appear from nothing, they scale up from a point. Drawers slide from an edge. Toasts enter from the corner they'll occupy.
 3. **Nothing teleports**: instant state changes are jarring. Even a 100ms opacity transition grounds the user.
 
+### The Verb Test (Apple HIG)
+
+Every animation must have a target verb. If you can't name what the animation tells the user (*arrives*, *departs*, *replaces*, *expands*, *settles*), delete it. Decorative motion is a tell that the static composition wasn't trusted.
+
+**Animation kill list — these have no verb and must be removed:**
+- Fade-in-on-scroll without a spatial origin (the element doesn't *come from* anywhere)
+- Hover gradient shifts on backgrounds
+- Parallax on body content
+- Decorative pulse/glow/breathe loops
+- Hero text typewriter effects in app chrome
+- Background "ambient" particle systems
+- Auto-playing carousel transitions
+
+If you find yourself writing an `@keyframes` for the visual interest, you're decorating. Stop.
+
 ### Timing Reference
 
 | Interaction | Duration | Easing |
@@ -472,7 +892,7 @@ Accessibility is not a separate concern — it is a dimension of quality. These 
 | Page / route transition | 180ms | `ease-in-out` |
 | Skeleton → content reveal | 300ms | `ease-out` |
 | Tab switch | 200ms | `ease-in-out` |
-| Number count animation | 600ms | `ease-out` |
+| Number count animation | 400ms | `cubic-bezier(0.16, 1, 0.3, 1)` |
 
 **The spring easing `cubic-bezier(0.16, 1, 0.3, 1)`** feels physical and deliberate — slightly overshooting and settling. Use for all elements entering the screen.
 
@@ -648,6 +1068,17 @@ Use this before finalising any screen or shipping any feature.
 - [ ] Is no display-scale type used (web apps cap at `--text-xl`)?
 - [ ] Is there a maximum of ONE accent colour in UI chrome per viewport?
 - [ ] Is `--color-text-muted` passing 4.5:1 contrast on all surfaces it appears on?
+- [ ] Is hierarchy carried by **weight, not size**, wherever possible? (card title and body at the same `--text-base`, weight `600` vs `400`)
+- [ ] Are no more than TWO distinct font sizes used on a single screen?
+
+### Apple-Grade (v3.0)
+- [ ] Are all spacing values multiples of **4** (with **8** strongly preferred)? No `10px`, `13px`, `15px`, `18px`, `22px` allowed.
+- [ ] Does any translucent surface meet **4.5:1 contrast** *after* the blur?
+- [ ] Does every animation have a nameable verb (*arrives*, *replaces*, *expands*, *settles*)? Decorative motion deleted.
+- [ ] Is shadow restraint honored? (Only `--shadow-sm` and `--shadow-lg` — no mid-shadows, no coloured shadows)
+- [ ] Is border restraint honored? (1px hairlines at ~6% opacity at rest, ~12% on hover. No 2px borders in chrome.)
+- [ ] Are all radii from the four-token system (6/8/12/full)? No arbitrary values.
+- [ ] If translucent: is `prefers-reduced-transparency: reduce` falling back to opaque?
 
 ### Performance
 - [ ] Are images lazy-loaded with explicit `width` and `height`?

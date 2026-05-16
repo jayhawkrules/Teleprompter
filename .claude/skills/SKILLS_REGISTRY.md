@@ -2,8 +2,8 @@
 
 Machine + human-readable index of every skill in this hub. Sister file: `skills-registry.json` (same data, machine format).
 
-**Total skills:** 36 (13 pre-existing + 13 new in 2026-05-10 upgrade + 2 added 2026-05-10 observability + 1 strategic added 2026-05-10 + 1 legal added 2026-05-11 + 1 casting added 2026-05-11 + 1 design added 2026-05-12 + 1 casting-research added 2026-05-12 + 1 database-link-and-permissions-audit added 2026-05-12 + 1 phased-shipping added 2026-05-12 + 1 shipping-efficiency-budget added 2026-05-14)
-**Last regen:** 2026-05-14
+**Total skills:** 37 (13 pre-existing + 13 new in 2026-05-10 upgrade + 2 added 2026-05-10 observability + 1 strategic added 2026-05-10 + 1 legal added 2026-05-11 + 1 casting added 2026-05-11 + 1 design added 2026-05-12 + 1 casting-research added 2026-05-12 + 1 database-link-and-permissions-audit added 2026-05-12 + 1 phased-shipping added 2026-05-12 + 1 shipping-efficiency-budget added 2026-05-14 + 1 landing-page-routing-audit added 2026-05-15)
+**Last regen:** 2026-05-15
 
 ## Schema
 
@@ -54,6 +54,17 @@ For each skill, the registry tracks:
 - **Related:** `fresh-chat-handoff`
 - **Revenue impact:** indirect
 - **Safety impact:** high — embeds safety contract in remote sessions
+- **Applies to:** A, B, C, D, E
+
+#### landing-page-routing-audit
+- **Path:** `landing-page-routing-audit/`
+- **Purpose:** Quarterly (or post-incident) audit of which surface a visitor lands on at the public root URL and every hash route. Catches the four classic routing traps — auto-sign-in on root, AudienceChooser-vs-LandingPage default mismatch, signed-in gate leaking onto public URLs, hash classifier matching subset of intended routes. Distilled from the CastHub1 PR #677-#680 incident series.
+- **Stack support:** all
+- **When to use:** after any change to top-level routing or auth gates, before app-store / TikTok / Instagram reviewer touches the site, when a user reports landing on a signed-in gate from a public URL, quarterly per repo with public marketing surface
+- **When not to use:** single feature build that doesn't touch top-level routing, internal-only tools, during an active incident
+- **Related:** `safe-edit-policy`, `repo-health-audit`, `qa-hardening`, `human-simulation-testing`, `phased-shipping`, `shipping-efficiency-budget`
+- **Revenue impact:** high — public routes are the front door for SEO + app-store review + first-impression conversion
+- **Safety impact:** high — prevents signed-out visitors from auto-being-authed into shared accounts (privacy / data-isolation risk)
 - **Applies to:** A, B, C, D, E
 
 #### shipping-efficiency-budget

@@ -1,10 +1,10 @@
 {
   "schema_version": "1.0",
-  "generated_at": "2026-05-14",
-  "total_skills": 36,
+  "generated_at": "2026-05-16",
+  "total_skills": 38,
   "ui_design_web_apps_version": "3.0",
   "categories": {
-    "ai_safety_workflow": ["safe-edit-policy", "fresh-chat-handoff", "cowork-kickoff", "phased-shipping", "shipping-efficiency-budget"],
+    "ai_safety_workflow": ["safe-edit-policy", "fresh-chat-handoff", "cowork-kickoff", "phased-shipping", "shipping-efficiency-budget", "tighten"],
     "testing_qa": ["qa-hardening", "human-simulation-testing", "production-error-to-regression"],
     "ci_cd_infrastructure": ["ci-gate-builder", "firebase-hosting-security", "firestore-rbac-helpers", "firebase-actions-deploy", "database-link-and-permissions-audit", "shipping-efficiency-budget"],
     "security": ["vendor-consolidation-policy", "payment-webhook-safety", "vendor-onboarding-walkthrough"],
@@ -543,6 +543,36 @@
       "category": "ai_safety_workflow",
       "version": "1.0.0",
       "is_new_2026_05_14": true
+    },
+    {
+      "name": "landing-page-routing-audit",
+      "path": "landing-page-routing-audit/",
+      "purpose": "Quarterly (or post-incident) audit of which surface a visitor lands on at the public root URL and every hash route. Catches the four classic routing traps — auto-sign-in on root, AudienceChooser-vs-LandingPage default mismatch, signed-in gate leaking onto public URLs, hash classifier matching subset of intended routes. Distilled from the CastHub1 PR #677-#680 incident series 2026-05-15",
+      "stack_support": ["A", "B", "C", "D", "E"],
+      "when_to_use": "after any change to top-level routing or auth gates, before app-store / TikTok / Instagram reviewer touches the site, when a user reports landing on a signed-in gate from a public URL, quarterly per repo with public marketing surface",
+      "when_not_to_use": "single feature build that doesn't touch top-level routing, internal-only tools (admin dashboards, CRM), during an active incident (fix first, audit after)",
+      "related": ["safe-edit-policy", "repo-health-audit", "qa-hardening", "human-simulation-testing", "phased-shipping", "shipping-efficiency-budget"],
+      "revenue_impact": "high — public marketing routes are the front door for SEO, app-store review, and first-impression conversion; a signed-in gate leaking onto them breaks all three at once",
+      "safety_impact": "high — fixes routing trap bugs that let signed-out visitors get auto-authed into shared accounts (privacy / data isolation)",
+      "applies_to_repo_classes": ["A", "B", "C", "D", "E"],
+      "category": "ai_safety_workflow",
+      "version": "1.0.0",
+      "is_new_2026_05_15": true
+    },
+    {
+      "name": "tighten",
+      "path": "tighten/",
+      "purpose": "Plays a senior/principal-engineer reviewer leaning over the implementer's shoulder. Substantive design / correctness / cost / surface-area pass — not lint, not style. Pre-loaded question list across design, correctness, cost, blast-radius, failure-observability, naming, tests, and codebase-consistency axes. Forces a verdict (ship-as-is / tighten-then-ship / rework), every recommendation comes with explicit tradeoff, and every pass ends with a 'one non-obvious thing' observation that only a senior would catch. Includes a voice-rules section (no throat-clearing, no jerk mode, no style nits) and stack-conditional sharpening hooks",
+      "stack_support": ["A", "B", "C", "D", "E"],
+      "when_to_use": "after writing non-trivial code in-session (proactive), user says 'tighten' / 'could we have done that better' / 'double-check' / 'big boss review' / 'principal review', before merging an auto-drafted PR, after a `simplify` pass, any change touching money / identity / security / cross-cutting concerns",
+      "when_not_to_use": "trivial diffs (typo, dependency bump, one-line config), user is in flow asking for forward progress not review, /ultrareview already ran in the last hour, style/lint-only feedback (linter's job), user said 'ship as-is, don't second-guess'",
+      "related": ["safe-edit-policy", "simplify", "phased-shipping", "shipping-efficiency-budget", "production-error-to-regression", "firestore-rbac-helpers", "payment-webhook-safety"],
+      "revenue_impact": "indirect — catches design bugs before they become incidents, missing tests before they become regressions, premature abstractions before they become refactors",
+      "safety_impact": "high — explicit blast-radius + reversibility questions in the pre-baked list catch the security / money / data-loss class of issues that style review misses",
+      "applies_to_repo_classes": ["A", "B", "C", "D", "E"],
+      "category": "ai_safety_workflow",
+      "version": "1.0.0",
+      "is_new_2026_05_16": true
     }
   ]
 }

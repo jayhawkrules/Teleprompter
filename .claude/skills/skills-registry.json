@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "generated_at": "2026-05-16",
-  "total_skills": 38,
+  "total_skills": 39,
   "ui_design_web_apps_version": "3.0",
   "categories": {
     "ai_safety_workflow": ["safe-edit-policy", "fresh-chat-handoff", "cowork-kickoff", "phased-shipping", "shipping-efficiency-budget", "tighten"],
@@ -12,7 +12,7 @@
     "product_monetization": ["monetization-readiness-review", "stripe-new-app-setup", "analytics-event-map"],
     "portfolio_management": ["portfolio-health-audit", "repo-health-audit", "new-repo-quality-bootstrap", "new-app-starter", "feature-scaffold"],
     "creative_pipeline": ["premium-product-demo", "asset-aware-creative-pipeline", "video-export-remotion"],
-    "design": ["ui-design-web-apps"],
+    "design": ["ui-design-web-apps", "gamified-quiz-design"],
     "strategy": ["market-research-competitive-intel", "app-training-manual"],
     "observability": ["error-tracking-system", "skill-auto-heal"],
     "legal_compliance": ["legal-compliance-guardian"],
@@ -558,6 +558,21 @@
       "category": "ai_safety_workflow",
       "version": "1.0.0",
       "is_new_2026_05_15": true
+    },
+    {
+      "name": "gamified-quiz-design",
+      "path": "gamified-quiz-design/",
+      "purpose": "The game-loop doctrine that turns a 100-question form into a sharable product. Eight pillars - cascade reveal (don't dump at end), branded-asset pipeline (illustration > emoji, video > static), share-back loop (the viral mechanic), replay-bait (drift tracking, compare to past self), social proof (cohort stats, rarity), post-result discovery (rival/ally/complement graph), daily micro-loop (one question/day), progression-not-completion (every screen pays off). Includes a 12-item pre-launch checklist, stack-conditional guidance, and a worked example applying all 8 pillars to Mythie's existing #447 quiz with a 6-phase PR plan",
+      "stack_support": ["A", "B", "C"],
+      "when_to_use": "building a new quiz/archetype/onboarding flow from scratch, auditing an existing quiz that 'feels flat', the user says 'gamify it' / 'make the result feel less flat' / 'use our branded images', pre-launch QA on any personality product, share rate is low",
+      "when_not_to_use": "pure form fills (checkout, settings), internal admin tools, A/B test where one variant is intentionally vanilla, quiz is shipping in 24h with no brand assets ready (defer Pillars 2 + 7)",
+      "related": ["safe-edit-policy", "ui-design-web-apps", "premium-product-demo", "asset-aware-creative-pipeline", "video-export-remotion", "analytics-event-map", "tighten", "phased-shipping"],
+      "revenue_impact": "high - sharable result moments + share-back loop are the viral coefficient driver; the difference between a 1.0× fanout and a 1.5× fanout determines whether the quiz is a feature or a growth channel. Indirect via the producer-side data depth that comes with replay-bait + daily micro-loop completion",
+      "safety_impact": "medium - explicit doctrine against generic AI-generated archetype copy and half-finished branded asset sets prevents the 'unbranded brand' failure mode; the asset-manifest validation gate catches missing illustrations in CI not prod",
+      "applies_to_repo_classes": ["A", "B", "C"],
+      "category": "design",
+      "version": "1.0.0",
+      "is_new_2026_05_16": true
     },
     {
       "name": "tighten",

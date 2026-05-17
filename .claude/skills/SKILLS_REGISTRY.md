@@ -2,7 +2,7 @@
 
 Machine + human-readable index of every skill in this hub. Sister file: `skills-registry.json` (same data, machine format).
 
-**Total skills:** 37 (13 pre-existing + 13 new in 2026-05-10 upgrade + 2 added 2026-05-10 observability + 1 strategic added 2026-05-10 + 1 legal added 2026-05-11 + 1 casting added 2026-05-11 + 1 design added 2026-05-12 + 1 casting-research added 2026-05-12 + 1 database-link-and-permissions-audit added 2026-05-12 + 1 phased-shipping added 2026-05-12 + 1 shipping-efficiency-budget added 2026-05-14 + 1 landing-page-routing-audit added 2026-05-15)
+**Total skills:** 38 (13 pre-existing + 13 new in 2026-05-10 upgrade + 2 added 2026-05-10 observability + 1 strategic added 2026-05-10 + 1 legal added 2026-05-11 + 1 casting added 2026-05-11 + 1 design added 2026-05-12 + 1 casting-research added 2026-05-12 + 1 database-link-and-permissions-audit added 2026-05-12 + 1 phased-shipping added 2026-05-12 + 1 shipping-efficiency-budget added 2026-05-14 + 1 landing-page-routing-audit added 2026-05-15 + 1 usage-pattern-analyst added 2026-05-17)
 **Last regen:** 2026-05-15
 
 ## Schema
@@ -246,10 +246,21 @@ For each skill, the registry tracks:
 - **Stack support:** A, B
 - **When to use:** pre-launch; before paid acquisition
 - **When not to use:** backend-only
-- **Related:** `monetization-readiness-review` (which depends on this)
+- **Related:** `monetization-readiness-review` (which depends on this), `usage-pattern-analyst` (reads the taxonomy weekly)
 - **Revenue impact:** **highest** — funnel observability
 - **Safety impact:** medium
 - **Applies to:** A, B (UI apps); some C apps with outbound conversion
+
+#### usage-pattern-analyst
+- **Path:** `usage-pattern-analyst/`
+- **Purpose:** Weekly cadence — read the analyticsEvents stream, surface top friction patterns, propose concrete UI changes as draft issues/PRs. Layer 2 of the self-improving-app architecture (behavior-side loop).
+- **Stack support:** A, B
+- **When to use:** weekly Mondays (pairs with `portfolio-health-audit`); after a feature ships with a funnel hypothesis; before roadmap planning
+- **When not to use:** first 14 days post-launch (sample too small); analytics pipeline not yet live (run `analytics-event-map` first); backend-only repos
+- **Related:** `analytics-event-map` (prerequisite), `production-error-to-regression` (failure-side counterpart), `market-research-competitive-intel`, `ui-design-web-apps`, `portfolio-health-audit`
+- **Revenue impact:** **compounding** — UI improvements from real behavior beat assumptions; a 12-week cadence is the moat
+- **Safety impact:** low
+- **Applies to:** A, B; not C/D/E
 
 ### Portfolio Management (NEW category)
 

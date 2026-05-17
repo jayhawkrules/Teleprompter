@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "generated_at": "2026-05-16",
-  "total_skills": 39,
+  "generated_at": "2026-05-17",
+  "total_skills": 40,
   "ui_design_web_apps_version": "3.0",
   "categories": {
     "ai_safety_workflow": ["safe-edit-policy", "fresh-chat-handoff", "cowork-kickoff", "phased-shipping", "shipping-efficiency-budget", "tighten"],
@@ -9,7 +9,7 @@
     "ci_cd_infrastructure": ["ci-gate-builder", "firebase-hosting-security", "firestore-rbac-helpers", "firebase-actions-deploy", "database-link-and-permissions-audit", "shipping-efficiency-budget"],
     "security": ["vendor-consolidation-policy", "payment-webhook-safety", "vendor-onboarding-walkthrough"],
     "seo": ["seo-aeo-optimizer"],
-    "product_monetization": ["monetization-readiness-review", "stripe-new-app-setup", "analytics-event-map"],
+    "product_monetization": ["monetization-readiness-review", "stripe-new-app-setup", "analytics-event-map", "usage-pattern-analyst"],
     "portfolio_management": ["portfolio-health-audit", "repo-health-audit", "new-repo-quality-bootstrap", "new-app-starter", "feature-scaffold"],
     "creative_pipeline": ["premium-product-demo", "asset-aware-creative-pipeline", "video-export-remotion"],
     "design": ["ui-design-web-apps", "gamified-quiz-design"],
@@ -152,12 +152,26 @@
       "stack_support": ["A", "B"],
       "when_to_use": "pre-launch; before paid acquisition",
       "when_not_to_use": "backend-only",
-      "related": ["monetization-readiness-review"],
+      "related": ["monetization-readiness-review", "usage-pattern-analyst"],
       "revenue_impact": "highest — funnel observability",
       "safety_impact": "medium",
       "applies_to_repo_classes": ["A", "B", "C-with-outbound-conversion"],
       "category": "product_monetization",
       "is_new_2026_05_10": true
+    },
+    {
+      "name": "usage-pattern-analyst",
+      "path": "usage-pattern-analyst/",
+      "purpose": "Weekly cadence — read analyticsEvents stream, surface top friction patterns, propose concrete UI changes as draft issues / PRs. Layer 2 of the self-improving-app architecture (behavior-side loop). Pairs with production-error-to-regression (failure-side loop).",
+      "stack_support": ["A", "B"],
+      "when_to_use": "weekly (Mondays); after a feature ships with funnel hypothesis; before roadmap planning",
+      "when_not_to_use": "first 14 days post-launch (sample too small); analytics pipeline not yet live; backend-only repos",
+      "related": ["analytics-event-map", "production-error-to-regression", "market-research-competitive-intel", "ui-design-web-apps", "portfolio-health-audit"],
+      "revenue_impact": "compounding — UI improvements from real behavior beat assumptions",
+      "safety_impact": "low",
+      "applies_to_repo_classes": ["A", "B"],
+      "category": "product_monetization",
+      "is_new_2026_05_17": true
     },
     {
       "name": "portfolio-health-audit",

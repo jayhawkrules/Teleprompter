@@ -1,10 +1,10 @@
 {
   "schema_version": "1.0",
   "generated_at": "2026-05-17",
-  "total_skills": 40,
+  "total_skills": 41,
   "ui_design_web_apps_version": "3.0",
   "categories": {
-    "ai_safety_workflow": ["safe-edit-policy", "fresh-chat-handoff", "cowork-kickoff", "phased-shipping", "shipping-efficiency-budget", "tighten"],
+    "ai_safety_workflow": ["safe-edit-policy", "fresh-chat-handoff", "cowork-kickoff", "phased-shipping", "shipping-efficiency-budget", "tighten", "99it"],
     "testing_qa": ["qa-hardening", "human-simulation-testing", "production-error-to-regression"],
     "ci_cd_infrastructure": ["ci-gate-builder", "firebase-hosting-security", "firestore-rbac-helpers", "firebase-actions-deploy", "database-link-and-permissions-audit", "shipping-efficiency-budget"],
     "security": ["vendor-consolidation-policy", "payment-webhook-safety", "vendor-onboarding-walkthrough"],
@@ -602,6 +602,21 @@
       "category": "ai_safety_workflow",
       "version": "1.0.0",
       "is_new_2026_05_16": true
+    },
+    {
+      "name": "99it",
+      "path": "99it/",
+      "purpose": "Audit-and-marathon loop. When Andrew asks 'rate this 99/100' / '99 this' / 'audit to 99' / 'perfect this feature', drops into a four-phase cycle: honest competitive audit (subagent, 48+ findings against named competitors, file:line specifics required), calibrated rating (no flattery — 78/100 with a roadmap beats inflated 95/100), themed marathon PRs (bundled per shipping-efficiency-budget), and re-rate after each phase. Battle-tested on the e-sign system 2026-05-18 (78 → 93 → ship). Includes deferral rules for correctly-scoped multi-day projects (RFC 3161, PAdES-LTA, external counsel) and forbidden-behavior list (no flattery, no fake-99, no benchmark hand-waving, no PR fragmentation).",
+      "stack_support": ["A", "B", "C", "D", "E"],
+      "when_to_use": "user says /99it, 'rate this 99/100', '99 this', 'audit to 99', 'perfect this feature', 'marathon this to 99', 'is this 99/100?'. After a feature's coherent v1 has shipped end-to-end. Before a public launch or external marketing push. After a phased-shipping rollout. As the closing pass on a flagship feature.",
+      "when_not_to_use": "quick bug fixes (use production-error-to-regression instead), early-stage features that haven't shipped a coherent v1 yet (finish the build first), cross-cutting refactors with no clear feature boundary (use repo-health-audit instead)",
+      "related": ["safe-edit-policy", "shipping-efficiency-budget", "tighten", "phased-shipping", "human-simulation-testing", "qa-hardening", "ui-design-web-apps", "legal-compliance-guardian"],
+      "revenue_impact": "direct — turns 'works' into 'best-in-class' on flagship features that drive paid conversion. The honest-rating discipline keeps you from shipping a 78/100 feature with launch marketing positioning it as a 99/100.",
+      "safety_impact": "high — the audit phase surfaces correctness/security/legal issues a non-adversarial review would miss (TOCTOU races, non-constant-time compares, terminal-status guards). The forbidden-behaviors list prevents 'audit theater' where claims outpace ground truth.",
+      "applies_to_repo_classes": ["A", "B", "C", "D", "E"],
+      "category": "ai_safety_workflow",
+      "version": "1.0.0",
+      "is_new_2026_05_18": true
     }
   ]
 }

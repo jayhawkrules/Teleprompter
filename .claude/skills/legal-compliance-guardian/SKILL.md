@@ -57,15 +57,15 @@ Load `templates/annual-legal-update-email.md` and the 45-day pre-send checklist.
 |---|---|---|---|
 | Mythie / CastHub | `CastHub1` | Toronado Entertainment, LLC | /privacy, /terms, /cookies |
 | BacklotHub | `BacklotHub` | Toronado Entertainment, LLC _(beneficial: Andrew Ward)_ | /privacy, /terms, /cookies |
-| CueHound | `run-of-show` | Toronado Entertainment, LLC | /privacy, /terms |
-| Aclamos (incl. Ballotis feature) | `Awardssubmission` | Toronado Entertainment, LLC | /privacy, /terms, /cookies, /contest-rules-template |
-| Ballotis _(future standalone spin-out)_ | _to be split from `Awardssubmission`_ | Toronado Entertainment, LLC | _separate inventory at spin-out_ |
-| The Production Shelf | `the-production-shelf` | Toronado Entertainment, LLC _(beneficial: Andrew Ward)_ | /privacy, /terms, /refund-policy, /cookies |
-| ARTAS | `ARTAS` | Toronado Entertainment, LLC | /privacy, /terms, /contest-rules |
+| CueHound | `RunOfShow` | Toronado Entertainment, LLC | /privacy, /terms |
+| Aclamos (incl. Ballotis feature) | `awardssubmission` | Toronado Entertainment, LLC | /privacy, /terms, /cookies, /contest-rules-template |
+| Ballotis _(future standalone spin-out)_ | _to be split from `awardssubmission`_ | Toronado Entertainment, LLC | _separate inventory at spin-out_ |
+| The Production Shelf | `theproductionshelf` | Toronado Entertainment, LLC _(beneficial: Andrew Ward)_ | /privacy, /terms, /refund-policy, /cookies |
+| ARTAS | `artas-wordpress-backup` _(canonical legal source; sister repos `artas-redesign-preview`, `artas-blog-automation`)_ | Toronado Entertainment, LLC | /privacy, /terms, /contest-rules |
 | CRM-Ai | `CRM-ai` | Toronado Entertainment, LLC | /privacy, /terms, /cookies _(MUST be disclosed as subprocessor in source apps that feed it)_ |
-| Noelly | `holiday-lights` | Toronado Entertainment, LLC | _pending inspection_ |
-| Teleprompter App | `teleprompter` | Toronado Entertainment, LLC _(beneficial: Andrew Ward)_ | /privacy, /terms, /cookies |
-| Producing Hollywood | `producing-hollywood` | Producing Hollywood | /privacy, /terms |
+| Noelly | `holiday-lights` | Toronado Entertainment, LLC | /privacy, /terms (v0 scaffold pending — see `references/portfolio-app-risk-map.md`) |
+| Teleprompter App | `Teleprompter` | Toronado Entertainment, LLC _(beneficial: Andrew Ward)_ | /privacy, /terms, /cookies |
+| Producing Hollywood | `ProducingHollywood` | Producing Hollywood | /privacy, /terms |
 
 URLs in each per-app `legal-inventory.json` (path field).
 

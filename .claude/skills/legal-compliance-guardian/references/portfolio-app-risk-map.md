@@ -8,15 +8,15 @@ Each app has a different legal risk profile. This file defines the elevated-risk
 |---|---|---|---|---|
 | Mythie / CastHub | `CastHub1` | Toronado Entertainment, LLC | Toronado Entertainment, LLC | High — biometrics, minors potential, AI scoring |
 | BacklotHub | `BacklotHub` | Toronado Entertainment, LLC | Andrew Ward | High — multi-tenant processor obligations |
-| CueHound | `run-of-show` | Toronado Entertainment, LLC | Toronado Entertainment, LLC | Medium — event-staff PII |
-| Aclamos (incl. Ballotis feature) | `Awardssubmission` | Toronado Entertainment, LLC | Toronado Entertainment, LLC | High — multi-tenant B2B awards platform |
-| Ballotis (future standalone) | _spin-out from `Awardssubmission`_ | Toronado Entertainment, LLC | Toronado Entertainment, LLC | High — voting integrity + multi-tenant |
-| The Production Shelf | `the-production-shelf` | Toronado Entertainment, LLC | Andrew Ward | Medium-high — digital goods refunds, affiliate disclosure |
-| ARTAS | `ARTAS` | Toronado Entertainment, LLC | Toronado Entertainment, LLC | High — contest law, public display rights |
+| CueHound | `RunOfShow` | Toronado Entertainment, LLC | Toronado Entertainment, LLC | Medium — event-staff PII |
+| Aclamos (incl. Ballotis feature) | `awardssubmission` | Toronado Entertainment, LLC | Toronado Entertainment, LLC | High — multi-tenant B2B awards platform |
+| Ballotis (future standalone) | _spin-out from `awardssubmission`_ | Toronado Entertainment, LLC | Toronado Entertainment, LLC | High — voting integrity + multi-tenant |
+| The Production Shelf | `theproductionshelf` | Toronado Entertainment, LLC | Andrew Ward | Medium-high — digital goods refunds, affiliate disclosure |
+| ARTAS | `artas-wordpress-backup` (canonical legal source) | Toronado Entertainment, LLC | Toronado Entertainment, LLC | High — contest law, public display rights |
 | CRM-Ai | `CRM-ai` | Toronado Entertainment, LLC | Toronado Entertainment, LLC | High — live subprocessor for other portfolio apps; future B2B SaaS |
-| Noelly | `holiday-lights` | Toronado Entertainment, LLC | Toronado Entertainment, LLC | Unknown — pending first audit |
-| Teleprompter App | `teleprompter` | Toronado Entertainment, LLC | Andrew Ward | Medium — TikTok integration |
-| Producing Hollywood | `producing-hollywood` | Producing Hollywood | Producing Hollywood | Low — informational, contact form only |
+| Noelly | `holiday-lights` | Toronado Entertainment, LLC | Toronado Entertainment, LLC | High — geolocation + minors + charitable donations + two-sided marketplace + commerce (per 2026-05-11 first audit) |
+| Teleprompter App | `Teleprompter` | Toronado Entertainment, LLC | Andrew Ward | Medium — TikTok integration |
+| Producing Hollywood | `ProducingHollywood` | Producing Hollywood | Producing Hollywood | Low — informational, contact form only |
 
 > **Note:** Personally-held apps (BacklotHub, The Production Shelf, Teleprompter) currently use Toronado Entertainment, LLC as the legal owner of record per Andrew's instruction. Revisit at next portfolio legal review if any of these are migrated to a different controlling entity.
 
@@ -89,12 +89,12 @@ Each app has a different legal risk profile. This file defines the elevated-risk
 
 ---
 
-## CUEHOUND (live event management — repo: `run-of-show`)
+## CUEHOUND (live event management — repo: `RunOfShow`)
 
 **Legal pages needed:** `/privacy`, `/terms`
 **Legal owner of record:** Toronado Entertainment, LLC
 
-> **Naming note:** Brand name is **CueHound**. Repo name is `run-of-show`. Always reference CueHound on live legal pages and user-facing copy; the repo name is internal only.
+> **Naming note:** Brand name is **CueHound**. Repo name is `RunOfShow`. Always reference CueHound on live legal pages and user-facing copy; the repo name is internal only.
 
 **Elevated risk items:**
 - Event staff and crew personal data
@@ -105,12 +105,12 @@ Each app has a different legal risk profile. This file defines the elevated-risk
 
 ---
 
-## ACLAMOS — AWARDS SUBMISSION (repo: `Awardssubmission`)
+## ACLAMOS — AWARDS SUBMISSION (repo: `awardssubmission`)
 
 **Legal pages needed:** `/privacy`, `/terms` (platform terms + tenant DPA), `/cookies`, `/contest-rules-template`
 **Legal owner of record:** Toronado Entertainment, LLC
 
-> **Naming note:** Repo name is `Awardssubmission`; brand on live pages is **Aclamos**. Ballotis is a feature within Aclamos today and may spin out as a standalone product later.
+> **Naming note:** Repo name is `awardssubmission`; brand on live pages is **Aclamos**. Ballotis is a feature within Aclamos today and may spin out as a standalone product later.
 
 **Elevated risk items:**
 - Multi-tenant B2B: each tenant is an awards organization running their own submissions process
@@ -126,7 +126,7 @@ Each app has a different legal risk profile. This file defines the elevated-risk
 
 ---
 
-## BALLOTIS (voting / balloting — feature today within `Awardssubmission`, future standalone)
+## BALLOTIS (voting / balloting — feature today within `awardssubmission`, future standalone)
 
 **Legal pages needed (today):** covered under the Aclamos platform legal docs
 **Legal pages needed (post spin-out):** separate `/privacy`, `/terms`, `/cookies`
@@ -178,14 +178,31 @@ Each app has a different legal risk profile. This file defines the elevated-risk
 
 ---
 
-## NOELLY (holiday lights — repo: `holiday-lights`)
+## NOELLY (holiday experience marketplace — repo: `holiday-lights`)
 
-**Legal pages needed:** _pending inspection_
+**Legal pages needed:** /privacy, /terms (consumer-facing), /terms-business (display/event owners — two-sided marketplace), /cookies, /refund-policy (donations + paid features), /accessibility, /charity-disclosure
 **Legal owner of record:** Toronado Entertainment, LLC
 
-> **Naming note:** Brand name is **Noelly**. Repo name is `holiday-lights`. Always reference Noelly on live legal pages and user-facing copy.
+**Naming note:** Brand name is Noelly. Repo name is holiday-lights. Always reference Noelly on live legal pages and user-facing copy.
 
-**Status:** Risk class UNKNOWN until first audit. Likely a seasonal consumer-facing product; first inspection pass should determine: is there a user account system? payment? location data (light show registry)? UGC? This section will be filled by Step A of the portfolio rollout audit and a follow-up edit to this file.
+**Elevated risk items:**
+- Two-sided marketplace: consumer-side T&C + creator-side (display owner / event organiser) commercial terms — distinct legal posture (controller for consumers, processor-or-joint-controller for owners' visitor data)
+- Geolocation data + saved routes (families with children traveling between displays) — Capacitor geolocation + Mapbox routing; precise-location-data legal-basis required (UK GDPR Art 6 + CCPA sensitive-PI category)
+- Photo uploads of private homes (display-owner addresses are sensitive; doxing protection clause)
+- Children-facing magical-holiday concierge ("Ask Noelly" via Anthropic Claude) — COPPA implications if under-13 access likely; UK Age-Appropriate Design Code; AI transparency disclosure
+- Charitable giving (Every.org integration → 501c3 disbursement) — donor PII separate processing purpose; tax-receipt obligation (US IRS Pub 526 + UK Gift Aid if extended to UK donors)
+- HOA donations routed to 501c4 — limited deductibility disclosure required (US tax rules differ for 501c3 vs 501c4)
+- Stripe Connect for display-owner payouts — 1099-K thresholds, Stripe Issuer-of-Record, KYC obligations, AML
+- 5% platform donation fee with 60-day-notice change rule — needs Terms-of-Use clause matching the locked decision
+- LGBTQ+-affirming charity curation with admin kill-switch — needs an "editorial discretion / no-guarantee of charity availability" clause in T&C
+- GCLF alumni CSV import — pre-existing user list; consent / notice-of-processing required at import time (UK GDPR Art 14 — data obtained from a third party)
+- Mobile push notifications with location triggers — separate consent layer required (PECR / iOS+Android permission disclosure)
+
+**Terms must cover:** marketplace platform terms (no-guarantee of display accuracy), display-owner content licence, photo rights + privacy of private residences, donation processing role (Toronado is intermediary, Every.org is 501c3 receiver), refund + chargeback policy, kill-switch authority on charity de-listing, GCLF alumni data treatment.
+
+**Risk class:** High — geolocation + minors + charitable donations + two-sided marketplace + commerce.
+
+**Status:** First audit completed 2026-05-11 (per `TODO-NO-01 = A` accepted 2026-05-18 in the portfolio rollout doc).
 
 ---
 

@@ -2,7 +2,7 @@
 
 Machine + human-readable index of every skill in this hub. Sister file: `skills-registry.json` (same data, machine format).
 
-**Total skills:** 48 (13 pre-existing + 13 new in 2026-05-10 upgrade + 2 added 2026-05-10 observability + 1 strategic added 2026-05-10 + 1 legal added 2026-05-11 + 1 casting added 2026-05-11 + 1 design added 2026-05-12 + 1 casting-research added 2026-05-12 + 1 database-link-and-permissions-audit added 2026-05-12 + 1 phased-shipping added 2026-05-12 + 1 shipping-efficiency-budget added 2026-05-14 + 1 landing-page-routing-audit added 2026-05-15 + 1 usage-pattern-analyst added 2026-05-17 + 10 added 2026-05-20: parallel-claude-worktrees, claudemd-authoring, claude-sdk-in-ci, mcp-team-setup, agentic-feedback-loop, slash-commands-authoring, codebase-qa-onboarding, voice-locker-per-app, pricing-stress-tester, offer-sharpener)
+**Total skills:** 49 (13 pre-existing + 13 new in 2026-05-10 upgrade + 2 added 2026-05-10 observability + 1 strategic added 2026-05-10 + 1 legal added 2026-05-11 + 1 casting added 2026-05-11 + 1 design added 2026-05-12 + 1 casting-research added 2026-05-12 + 1 database-link-and-permissions-audit added 2026-05-12 + 1 phased-shipping added 2026-05-12 + 1 shipping-efficiency-budget added 2026-05-14 + 1 landing-page-routing-audit added 2026-05-15 + 1 usage-pattern-analyst added 2026-05-17 + 11 added 2026-05-20: parallel-claude-worktrees, claudemd-authoring, claude-sdk-in-ci, mcp-team-setup, agentic-feedback-loop, slash-commands-authoring, codebase-qa-onboarding, voice-locker-per-app, pricing-stress-tester, offer-sharpener, skill-dispatcher)
 **Last regen:** 2026-05-20
 
 ## Schema
@@ -65,6 +65,17 @@ For each skill, the registry tracks:
 - **Related:** `safe-edit-policy`, `repo-health-audit`, `qa-hardening`, `human-simulation-testing`, `phased-shipping`, `shipping-efficiency-budget`
 - **Revenue impact:** high — public routes are the front door for SEO + app-store review + first-impression conversion
 - **Safety impact:** high — prevents signed-out visitors from auto-being-authed into shared accounts (privacy / data-isolation risk)
+- **Applies to:** A, B, C, D, E
+
+#### skill-dispatcher
+- **Path:** `skill-dispatcher/`
+- **Purpose:** Recipe book mapping ~25 common task shapes → ordered skill bundles. Lightweight router (not full auto-dispatch). Reduces "did I remember to also invoke Y skill" cognitive load when 48 skills are available. Triggers on task descriptions ("build a landing page", "launch new pricing", "audit X"), not specific skill names.
+- **Stack support:** all
+- **When to use:** Andrew describes a TASK, not a specific skill — load this early in the session to pick the recipe bundle
+- **When not to use:** Andrew named a specific skill, trivial one-line change, pure Q&A
+- **Related:** all skills (this composes them); especially `safe-edit-policy` (foundation under every recipe), `skill-auto-heal` (keeps recipes from drifting)
+- **Revenue impact:** indirect — cognitive offload for Andrew across every multi-skill task
+- **Safety impact:** medium — picking the wrong recipe means missing safety skills like payment-webhook-safety on a checkout change
 - **Applies to:** A, B, C, D, E
 
 #### claudemd-authoring

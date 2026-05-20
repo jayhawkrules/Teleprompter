@@ -1,10 +1,10 @@
 {
   "schema_version": "1.0",
   "generated_at": "2026-05-20",
-  "total_skills": 51,
+  "total_skills": 52,
   "ui_design_web_apps_version": "3.0",
   "categories": {
-    "ai_safety_workflow": ["safe-edit-policy", "fresh-chat-handoff", "cowork-kickoff", "phased-shipping", "shipping-efficiency-budget", "tighten", "99it", "parallel-claude-worktrees", "claudemd-authoring", "slash-commands-authoring", "codebase-qa-onboarding"],
+    "ai_safety_workflow": ["safe-edit-policy", "fresh-chat-handoff", "cowork-kickoff", "phased-shipping", "shipping-efficiency-budget", "tighten", "99it", "parallel-claude-worktrees", "claudemd-authoring", "slash-commands-authoring", "codebase-qa-onboarding", "skill-dispatcher"],
     "testing_qa": ["qa-hardening", "human-simulation-testing", "production-error-to-regression", "agentic-feedback-loop"],
     "ci_cd_infrastructure": ["ci-gate-builder", "firebase-hosting-security", "firestore-rbac-helpers", "firebase-actions-deploy", "database-link-and-permissions-audit", "shipping-efficiency-budget", "claude-sdk-in-ci", "mcp-team-setup"],
     "security": ["vendor-consolidation-policy", "payment-webhook-safety", "vendor-onboarding-walkthrough"],
@@ -617,6 +617,21 @@
       "category": "ai_safety_workflow",
       "version": "1.0.0",
       "is_new_2026_05_18": true
+    },
+    {
+      "name": "skill-dispatcher",
+      "path": "skill-dispatcher/",
+      "purpose": "Recipe book mapping ~25 common task shapes to ordered skill bundles. Lightweight router for the 48-skill hub. Triggers on task descriptions (build, launch, audit, ship, fix, polish), not specific skill names. Reduces cognitive load of remembering which skills compose together.",
+      "stack_support": ["A", "B", "C", "D", "E"],
+      "when_to_use": "Andrew describes a TASK (not a specific skill name); load early in session to pick the recipe bundle",
+      "when_not_to_use": "Andrew named a specific skill, trivial one-line change, pure Q&A, internal debugging mid-task",
+      "related": ["all skills (composes them)", "safe-edit-policy", "skill-auto-heal", "claudemd-authoring", "fresh-chat-handoff", "cowork-kickoff"],
+      "revenue_impact": "indirect — cognitive offload across every multi-skill task",
+      "safety_impact": "medium — wrong recipe = missing safety skills like payment-webhook-safety",
+      "applies_to_repo_classes": ["A", "B", "C", "D", "E"],
+      "category": "ai_safety_workflow",
+      "version": "0.1.0",
+      "is_new_2026_05_20": true
     },
     {
       "name": "claudemd-authoring",

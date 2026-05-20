@@ -2,8 +2,8 @@
 
 Machine + human-readable index of every skill in this hub. Sister file: `skills-registry.json` (same data, machine format).
 
-**Total skills:** 38 (13 pre-existing + 13 new in 2026-05-10 upgrade + 2 added 2026-05-10 observability + 1 strategic added 2026-05-10 + 1 legal added 2026-05-11 + 1 casting added 2026-05-11 + 1 design added 2026-05-12 + 1 casting-research added 2026-05-12 + 1 database-link-and-permissions-audit added 2026-05-12 + 1 phased-shipping added 2026-05-12 + 1 shipping-efficiency-budget added 2026-05-14 + 1 landing-page-routing-audit added 2026-05-15 + 1 usage-pattern-analyst added 2026-05-17)
-**Last regen:** 2026-05-15
+**Total skills:** 48 (13 pre-existing + 13 new in 2026-05-10 upgrade + 2 added 2026-05-10 observability + 1 strategic added 2026-05-10 + 1 legal added 2026-05-11 + 1 casting added 2026-05-11 + 1 design added 2026-05-12 + 1 casting-research added 2026-05-12 + 1 database-link-and-permissions-audit added 2026-05-12 + 1 phased-shipping added 2026-05-12 + 1 shipping-efficiency-budget added 2026-05-14 + 1 landing-page-routing-audit added 2026-05-15 + 1 usage-pattern-analyst added 2026-05-17 + 10 added 2026-05-20: parallel-claude-worktrees, claudemd-authoring, claude-sdk-in-ci, mcp-team-setup, agentic-feedback-loop, slash-commands-authoring, codebase-qa-onboarding, voice-locker-per-app, pricing-stress-tester, offer-sharpener)
+**Last regen:** 2026-05-20
 
 ## Schema
 
@@ -65,6 +65,116 @@ For each skill, the registry tracks:
 - **Related:** `safe-edit-policy`, `repo-health-audit`, `qa-hardening`, `human-simulation-testing`, `phased-shipping`, `shipping-efficiency-budget`
 - **Revenue impact:** high — public routes are the front door for SEO + app-store review + first-impression conversion
 - **Safety impact:** high — prevents signed-out visitors from auto-being-authed into shared accounts (privacy / data-isolation risk)
+- **Applies to:** A, B, C, D, E
+
+#### claudemd-authoring
+- **Path:** `claudemd-authoring/`
+- **Purpose:** Hygiene rules + nested-CLAUDE.md pattern + `/memory` workflow for writing/tightening CLAUDE.md files across the portfolio. Caps at ~100 lines; encodes what belongs in CLAUDE.md vs `docs/` vs nested-CLAUDE.md vs `CLAUDE.local.md`. Audit procedure for stale/bloated files.
+- **Stack support:** all
+- **When to use:** new repo bootstrap, CLAUDE.md sweep when over 150 lines, quarterly audit, after adding new MCP/bash workflow/parallel-session policy
+- **When not to use:** personal preferences (use `~/.claude/CLAUDE.md`), one-time tasks, content that belongs in `docs/`
+- **Related:** `safe-edit-policy`, `new-repo-quality-bootstrap`, `repo-health-audit`, `parallel-claude-worktrees`, `fresh-chat-handoff`, `cowork-kickoff`
+- **Revenue impact:** indirect — better CLAUDE.md = faster, more accurate Claude across every session
+- **Safety impact:** medium — bad CLAUDE.md leads Claude to wrong assumptions about what's safe
+- **Applies to:** A, B, C, D, E
+
+#### claude-sdk-in-ci
+- **Path:** `claude-sdk-in-ci/`
+- **Purpose:** Use `claude -p --output-format json` as a Unix utility inside GitHub Actions, cron jobs, CI pipelines. Recipes for issue triage, error-tracking digest, log spike summarization, release notes, webhook event classification, weekly portfolio digest. Cost guardrails (model selection, max-turns, pre-filtering), failure-mode handling, standard secret pattern (ANTHROPIC_API_KEY). Pairs with shipping-efficiency-budget Pillar 1 for cron consolidation.
+- **Stack support:** all (any repo with GitHub Actions)
+- **When to use:** any LLM-judgment task in CI, replacing hand-rolled jq+regex extraction, building self-heal pipelines per error-tracking spec, generating release notes/digests
+- **When not to use:** safety-critical deterministic outputs, high-frequency hot paths >100/min, air-gapped runners
+- **Related:** `shipping-efficiency-budget`, `ci-gate-builder`, `error-tracking-system`, `claude-api`, `safe-edit-policy`
+- **Revenue impact:** indirect — automates triage/digest work that would otherwise sit on Andrew's plate
+- **Safety impact:** medium — `--dangerously-skip-permissions` and write-capable tools require care
+- **Applies to:** A, B, C, D, E
+
+#### mcp-team-setup
+- **Path:** `mcp-team-setup/`
+- **Purpose:** Check `.mcp.json` into repo root so every Claude Code / Cowork session opening the repo gets auto-prompted to install the team's standard MCP set. Per-stack defaults (A gets Firebase+Puppeteer; B gets Postgres+Playwright; C gets Puppeteer-only). Auto-approve patterns via `.claude/settings.json`. Security guardrails (no secrets in `.mcp.json`, scope filesystem MCP, read-only DB connections).
+- **Stack support:** all
+- **When to use:** new repo bootstrap, adding a new automated UI/DB workflow, audit pass for repos with no team-shared MCP, replacing per-developer ad-hoc MCP setup
+- **When not to use:** personal MCP setup (use `~/.claude/mcp.json`), one-off exploration, MCP servers requiring per-user OAuth (Stripe, etc.)
+- **Related:** `claudemd-authoring`, `new-repo-quality-bootstrap`, `agentic-feedback-loop`, `update-config`, `parallel-claude-worktrees`
+- **Revenue impact:** indirect — UI iteration speed via Puppeteer + DB inspection via Firebase MCP compounds across the portfolio
+- **Safety impact:** medium — bad MCP config can give Claude unintended write access; skill includes guardrails
+- **Applies to:** A, B, C (light); D, E rarely
+
+#### agentic-feedback-loop
+- **Path:** `agentic-feedback-loop/`
+- **Purpose:** The "give Claude a verifier so it iterates" doctrine from Boris Cherny. Verifier recipes per task: Puppeteer screenshot diff, Vitest watch, tsc --watch, Lighthouse loop, axe-core accessibility. Iteration budgets (default 5), stop conditions (no-progress detector, signal saturation, new problem introduced), forbidden patterns. Pairs with mcp-team-setup (provides the verifier tooling) and ui-design-web-apps (the design intent the loop chases).
+- **Stack support:** A, B (full); C (Lighthouse + Puppeteer); D, E adapted
+- **When to use:** UI matching a mock, fixing flaky tests, hitting a Lighthouse target, accessibility audit, visual regression, TS migration, hitting `/99it` competitive parity
+- **When not to use:** trivial one-line changes, backend with full test coverage, throwaway exploration, unreliable verifier
+- **Related:** `mcp-team-setup`, `ui-design-web-apps`, `premium-product-demo`, `human-simulation-testing`, `claude-sdk-in-ci`, `verify`, `99it`
+- **Revenue impact:** high — UI polish loops directly improve conversion surfaces
+- **Safety impact:** medium — runaway loops are a budget risk; skill includes stop-iterating rules
+- **Applies to:** A, B, C
+
+#### slash-commands-authoring
+- **Path:** `slash-commands-authoring/`
+- **Purpose:** Pattern for authoring custom slash commands (`.claude/commands/*.md`, `~/.claude/commands/*.md`). Covers file format (frontmatter + body), variable substitution ($ARGUMENTS, $1/$2), project vs user scope decisions, name collisions, the portfolio-standard command set (`/commit-push-pr`, `/triage-issues`, `/release-notes`, `/regression-from-sentry`, `/inspect`, `/cowork-handoff`, plus repo-specific `/deploy`, `/seed`, `/scout`, `/health`).
+- **Stack support:** all
+- **When to use:** a workflow has been done 3+ times by typing roughly the same prompt; onboarding teammate/Cowork to repo-specific workflow; building portfolio-standard commands
+- **When not to use:** one-off prompts, secret-bearing prompts, anything needing major per-invocation customization (use a skill instead)
+- **Related:** `claudemd-authoring`, `claude-sdk-in-ci`, `fresh-chat-handoff`, `cowork-kickoff`, `safe-edit-policy`
+- **Revenue impact:** indirect — recurring workflow speed
+- **Safety impact:** medium — commands with `allowed-tools` restrict their blast radius
+- **Applies to:** A, B, C, D, E
+
+#### codebase-qa-onboarding
+- **Path:** `codebase-qa-onboarding/`
+- **Purpose:** The 20-question Q&A protocol Anthropic uses for technical onboarding (cut their onboarding from 2-3 weeks to 2-3 days). Pattern: ask Claude history-spelunking questions BEFORE editing. Orientation → architecture → recent activity → footguns. Per-stack question adjustments. The no-edit-during-Q&A rule. Composes as the opening move for safe-edit-policy, fresh-chat-handoff, cowork-kickoff.
+- **Stack support:** all
+- **When to use:** fresh Claude session on a repo it hasn't seen; Cowork starting first session on a repo; human contributor onboarding; returning to a repo after 2+ weeks; before non-trivial edits
+- **When not to use:** session already deep in a specific task, trivial one-line fixes, read-only research already in flight
+- **Related:** `safe-edit-policy`, `fresh-chat-handoff`, `cowork-kickoff`, `claudemd-authoring`, `repo-health-audit`, `claude-sdk-in-ci`
+- **Revenue impact:** indirect — reduces wrong-shaped edits in revenue-critical surfaces
+- **Safety impact:** high — Q&A surfaces footguns before they become incidents
+- **Applies to:** A, B, C, D, E
+
+#### voice-locker-per-app
+- **Path:** `voice-locker-per-app/`
+- **Purpose:** Per-app brand voice lock via `assets/voice.md` manifests. Each of 23 apps has its own audience and voice (Mythie ≠ Aclamos ≠ Noelly). Manifest format pins sentence rhythm, favored/forbidden vocabulary, openings/closings, the fingerprint. Protocol echoes the voice fingerprint before drafting and self-audits against the "never" list. Adapted from Sairahul's Voice Locker.
+- **Stack support:** all
+- **When to use:** writing copy, marketing content, in-app strings, push notifications, emails, landing pages, App Store descriptions, social posts; onboarding contractor/Cowork to write copy
+- **When not to use:** internal docs/ADRs (engineering voice), legal language, one-off Slack messages, intentional voice-break campaigns
+- **Related:** `asset-aware-creative-pipeline`, `premium-product-demo`, `ui-design-web-apps`, `seo-aeo-optimizer`, `gamified-quiz-design`, `app-training-manual`, `legal-compliance-guardian`, `offer-sharpener`
+- **Revenue impact:** high — voice drift erodes conversion across landing/onboarding/upgrade surfaces
+- **Safety impact:** low — voice itself isn't a safety surface, but pairs with legal-compliance-guardian for jurisdictional voice
+- **Applies to:** all consumer-facing apps; not CRM-ai or internal tools
+
+#### pricing-stress-tester
+- **Path:** `pricing-stress-tester/`
+- **Purpose:** Stress-test pricing from three angles (skeptical buyer / value buyer / competitor) before launching or changing pricing on any portfolio app. Companions monetization-readiness-review: that one checks the technical path; this checks the pricing strategy. Tied to specific open decisions: e-sign tier pricing, Aclamos take-rate restoration, token unit naming. Adapted from Sairahul's Pricing Stress Tester.
+- **Stack support:** all (any monetized app)
+- **When to use:** launching new pricing, changing tiers/take-rates, resolving open pricing decisions, conversion stalled and funnel checks out
+- **When not to use:** internal-tool pricing, free-only surfaces, one-time minor tweaks
+- **Related:** `monetization-readiness-review`, `market-research-competitive-intel`, `analytics-event-map`, `vendor-consolidation-policy`, `stripe-new-app-setup`, `payment-webhook-safety`, `99it`, `offer-sharpener`
+- **Revenue impact:** **highest** — pricing communication directly drives conversion
+- **Safety impact:** low — strategic decision, not technical
+- **Applies to:** A, B (any monetized app); D (Payhip)
+
+#### offer-sharpener
+- **Path:** `offer-sharpener/`
+- **Purpose:** Find the gap between what Andrew thinks the app offers and what a first-time visitor hears. Produces sharpened 1-2 sentence offer + "the one line" (clarity test, not a tagline). Adapted from Sairahul's Offer Sharpener. Composes after voice-locker-per-app (voice first, sharpening second) and pairs with pricing-stress-tester.
+- **Stack support:** all (any consumer-facing app)
+- **When to use:** landing page hero rewrites, App Store descriptions, paid-tier upsell modals, signup-flow value props, social ad copy, conversion-stall investigation, new app launch
+- **When not to use:** internal-tool descriptions, docs/help (different goal), legal language, copy that's already converting
+- **Related:** `voice-locker-per-app`, `market-research-competitive-intel`, `pricing-stress-tester`, `premium-product-demo`, `seo-aeo-optimizer`, `gamified-quiz-design`, `99it`, `ui-design-web-apps`
+- **Revenue impact:** **highest** — 5-second-clarity on landing pages is conversion's biggest lever
+- **Safety impact:** low
+- **Applies to:** all consumer-facing apps
+
+#### parallel-claude-worktrees
+- **Path:** `parallel-claude-worktrees/`
+- **Purpose:** Git-worktree isolation pattern for repos where Cowork (cloud) + Claude Code (local) — or two Claude Code instances — touch the same working tree. Provides setup commands, branch-naming convention (`cowork/*`, `exp-*`, `rescue/*`), per-repo CLAUDE.md adoption snippet, and a 6-step recovery flow when the tree gets hijacked anyway. Distilled from the documented CastHub1 + Aclamos shared-tree hazard and Boris Cherny's "parallel sessions" guidance from Code with Claude 2026.
+- **Stack support:** all
+- **When to use:** any repo where Cowork is producing AND Claude Code will also touch it; any time two Claude Code terminals will work the same repo concurrently; before spawning a parallel exploration session
+- **When not to use:** single-session repos; pure read-only Q&A; one-off tasks under 5 minutes
+- **Related:** `cowork-kickoff` (kickoff prompt must reference the worktree path), `fresh-chat-handoff`, `safe-edit-policy`, `phased-shipping`
+- **Revenue impact:** indirect — prevents lost work / wrong-branch commits in revenue-critical repos
+- **Safety impact:** highest — directly mitigates the documented CastHub1/Aclamos Cowork hazard that has caused real commit loss
 - **Applies to:** A, B, C, D, E
 
 #### shipping-efficiency-budget

@@ -85,6 +85,7 @@ After every marathon phase, **re-rate honestly**:
 - "What changed since last rate?" — list the closed gaps
 - "What's the new number?" — be calibrated (a meaningful 5-10 point jump per phase is realistic)
 - "What's preventing 99?" — name the remaining gaps with effort estimates
+- **Record the new score** — in repos that surface a `/99it` scores panel (today: CastHub1), POST the updated entry to `/api/admin/feature-audit-scores/<featureId>` before closing the loop. See [Recording scores in the admin panel](#recording-scores-in-the-admin-panel-casthub1) below. Skipping this step is the reason the panel goes stale.
 
 If still below 99: **keep going** unless the remaining items are correctly-scoped multi-day projects (cryptography, vendor onboarding, external counsel review). Be honest about which is which.
 
@@ -123,6 +124,49 @@ When you stop (whether at 99 or deferring), produce:
 2. **List of merged PRs** with summaries.
 3. **Deferred items** with effort estimate + where they're filed (strategy doc / issue / memory).
 4. **Honest "what would actually take to hit 99"** if you stopped short.
+
+## Recording scores in the admin panel (CastHub1)
+
+CastHub1 ships `components/admin/FeatureAuditScoresPanel.tsx`, a super-admin view that lists every audited feature's current `/99it` score, remaining deductions, and "ideas to lift toward 99." The panel reads from the `featureAuditScores` Firestore collection.
+
+**The rule:** every `/99it` PR ends with a POST that records the new score. The panel's Refresh button is just a re-read — if nothing POSTs, the panel stays stale forever. This is what bit Andrew on 2026-05-20: 14+ phases of /99it work shipped between PRs #1058 and #1082, and none of them updated scores, so the panel showed marathon-end numbers that no longer matched reality.
+
+**How to POST.** From the repo, with the operator signed in as super-admin:
+
+```bash
+# Get an ID token in the browser DevTools console:
+#   await firebase.auth().currentUser.getIdToken()
+# Then:
+
+curl -sS -X POST https://<api-host>/api/admin/feature-audit-scores/<featureId> \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d @- <<'EOF'
+{
+  "displayName":   "Mythie Assistant (AI chat)",
+  "area":          "product",
+  "linkedIssue":   null,
+  "baselineScore": 70,
+  "currentScore":  94,
+  "baselineAt":    "2026-05-18T23:30:00Z",
+  "gaps": [
+    { "description": "Voice mode silently broken in iOS Capacitor", "pointsCost": 3 },
+    { "description": "Regenerate / edit-and-resend last message",    "pointsCost": 2 }
+  ],
+  "prsShipped": [
+    { "number": 1083, "title": "feat(chatbot): regenerate button (94→95)" }
+  ],
+  "nextActions": [ "iOS voice via @capacitor-community/speech-recognition" ],
+  "notes":       "Phase 14. +1 from regenerate; iOS voice still the next leap."
+}
+EOF
+```
+
+`auditedAt` is set server-side. `currentScore` must be ≥ `baselineScore` (the panel asserts no regressions).
+
+**`featureId` is the slug** — find the existing one by reading `backend/featureAuditScoresRoutes.js`'s `SEED_SCORES` array. Don't invent a new slug if the feature already has a row; just bump the existing one. New features (no prior audit) can use a new slug — match the slug to the audit's target.
+
+**No POST → no update.** If the panel needs a refresh but no audit ran, the score didn't change. Don't ghost-bump.
 
 ## Worked example — e-sign system (2026-05-18)
 

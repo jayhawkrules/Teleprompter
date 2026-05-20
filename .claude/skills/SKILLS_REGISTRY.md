@@ -2,8 +2,11 @@
 
 Machine + human-readable index of every skill in this hub. Sister file: `skills-registry.json` (same data, machine format).
 
-**Total skills:** 49 (13 pre-existing + 13 new in 2026-05-10 upgrade + 2 added 2026-05-10 observability + 1 strategic added 2026-05-10 + 1 legal added 2026-05-11 + 1 casting added 2026-05-11 + 1 design added 2026-05-12 + 1 casting-research added 2026-05-12 + 1 database-link-and-permissions-audit added 2026-05-12 + 1 phased-shipping added 2026-05-12 + 1 shipping-efficiency-budget added 2026-05-14 + 1 landing-page-routing-audit added 2026-05-15 + 1 usage-pattern-analyst added 2026-05-17 + 11 added 2026-05-20: parallel-claude-worktrees, claudemd-authoring, claude-sdk-in-ci, mcp-team-setup, agentic-feedback-loop, slash-commands-authoring, codebase-qa-onboarding, voice-locker-per-app, pricing-stress-tester, offer-sharpener, skill-dispatcher)
+**Total skills:** 52
 **Last regen:** 2026-05-20
+**Synced to:** 16 portfolio repos via `.github/workflows/sync-skills-to-portfolio.yml` (target list in `.github/sync-targets.json`)
+
+Authoritative count is the SKILL.md file count (`find . -maxdepth 2 -name SKILL.md | wc -l`). Sister file `skills-registry.json` mirrors this in JSON; both regenerate together.
 
 ## Schema
 

@@ -1,10 +1,10 @@
 {
   "schema_version": "1.0",
   "generated_at": "2026-05-20",
-  "total_skills": 52,
+  "total_skills": 53,
   "ui_design_web_apps_version": "3.0",
   "categories": {
-    "ai_safety_workflow": ["safe-edit-policy", "fresh-chat-handoff", "cowork-kickoff", "phased-shipping", "shipping-efficiency-budget", "tighten", "99it", "parallel-claude-worktrees", "claudemd-authoring", "slash-commands-authoring", "codebase-qa-onboarding", "skill-dispatcher"],
+    "ai_safety_workflow": ["safe-edit-policy", "fresh-chat-handoff", "cowork-kickoff", "phased-shipping", "shipping-efficiency-budget", "tighten", "99it", "99itm", "parallel-claude-worktrees", "claudemd-authoring", "slash-commands-authoring", "codebase-qa-onboarding", "skill-dispatcher"],
     "testing_qa": ["qa-hardening", "human-simulation-testing", "production-error-to-regression", "agentic-feedback-loop"],
     "ci_cd_infrastructure": ["ci-gate-builder", "firebase-hosting-security", "firestore-rbac-helpers", "firebase-actions-deploy", "database-link-and-permissions-audit", "shipping-efficiency-budget", "claude-sdk-in-ci", "mcp-team-setup"],
     "security": ["vendor-consolidation-policy", "payment-webhook-safety", "vendor-onboarding-walkthrough"],
@@ -617,6 +617,21 @@
       "category": "ai_safety_workflow",
       "version": "1.0.0",
       "is_new_2026_05_18": true
+    },
+    {
+      "name": "99itm",
+      "path": "99itm/",
+      "purpose": "Auto-marathon mode for /99it. When Andrew types /99itm [optional category like 'UI' or 'demo' or 'billing'], auto-pick the 5 lowest-scored features in the current repo (optionally area-filtered), set up a worktree per parallel-claude-worktrees, ship one focused PR per feature in sequence per the /99it methodology + safe-edit-policy + shipping-efficiency-budget, double-check CI green after each, sync the score panel + marathonScores TS data + SEED_SCORES, and end with a before/after delta table. Battle-tested on CastHub1 2026-05-21 — 8 PRs in one session lifting ui-information-architecture 66→90 + demo-process 65→92 + mobile-capacitor +10 + talent-registration +6. Stop conditions: 3 consecutive PR failures, $10 cost cap, real product bug surfaced, parallel-worktree hijack, user stop signal.",
+      "stack_support": ["A", "B", "C", "D", "E"],
+      "when_to_use": "user types /99itm or /99itm <category>, says 'marathon mode go', 'marathon the next 5', 'auto-marathon', 'ship the top 5', 'marathon UI / marathon demo / marathon billing'. Best for batched, lights-out work down the lowest-scored backlog when Andrew is busy or away.",
+      "when_not_to_use": "single-feature deep audit (use /99it instead), repo without a feature-tracking baseline (no SEED_SCORES or equivalent), bottom-5 features all blocked on multi-day/vendor work (tell user + suggest /99it on a specific one or mark gaps deferred first)",
+      "related": ["99it", "safe-edit-policy", "shipping-efficiency-budget", "parallel-claude-worktrees", "phased-shipping", "tighten", "skill-dispatcher"],
+      "revenue_impact": "direct — autonomous batched improvement of the lowest-scoring revenue-adjacent features (billing, demo, UI/IA). Lets Andrew step away and return to a measurable score delta + a stack of merged PRs.",
+      "safety_impact": "inherits /99it + safe-edit-policy guardrails. Adds marathon-specific stop conditions: 3-strikes-stop, cost cap, hijack recovery, user-stop. Always operates in a sibling worktree so the primary clone stays clean for any concurrent session.",
+      "applies_to_repo_classes": ["A", "B", "C", "D", "E"],
+      "category": "ai_safety_workflow",
+      "version": "1.0.0",
+      "is_new_2026_05_21": true
     },
     {
       "name": "skill-dispatcher",

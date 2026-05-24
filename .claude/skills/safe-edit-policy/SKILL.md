@@ -1,7 +1,7 @@
 ---
 name: safe-edit-policy
 description: Use as the foundation policy in EVERY session that touches any repo in the portfolio. Defines the safe inspection-before-edit contract, stack detection, forbidden operations, no-fake-completion rules, manual-task surfacing format, and post-session summary. Every other skill assumes this is loaded. Keywords: safe edit, inspection, plan before edit, manual tasks, definition of done, no fake completion, forbidden operations, stack detection, post-session summary.
-version: 1.0.0
+version: 1.1.0
 author: Andrew Ward (jayhawkrules)
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob]
 ---
@@ -95,6 +95,8 @@ For any non-trivial change (more than a single-line fix or comment edit), state 
 
 ```
 PLAN
+ - Assumptions: [list — what I'm taking as true that isn't explicitly stated. "None beyond stack detection" is valid.]
+ - Simpler alternative considered: [yes — describe and why I rejected it / no — only one viable path]
  - Files I will read: [list]
  - Files I will edit: [list]
  - Files I will create: [list]
@@ -103,6 +105,10 @@ PLAN
  - Risk: [low / medium / high + one sentence why]
  - Manual tasks I expect to surface: [list]
 ```
+
+Assumptions are surfaced *before* editing so Andrew can correct them cheaply, not after the diff is written. If you find yourself with no assumptions to list, double-check — you almost certainly have at least one inference about what "the right thing" looks like.
+
+If a simpler approach exists that you rejected, name it and the reason. If Andrew's stated approach is more complex than necessary, say so and propose the simpler path — push back is welcome, silent over-engineering is not.
 
 If the plan touches a forbidden operation from Step 3, stop and ask.
 
@@ -214,6 +220,7 @@ If the conversation continues after this block, treat the next instruction as a 
 4. **Bundling many small changes into one PR** — review becomes impossible. One concern per PR. Splitting is your job, not the user's.
 5. **Burying manual tasks in prose** — always the 🔧 block. Always.
 6. **Editing forbidden files because "it was a small change"** — the rules are absolute, not proportional to change size.
+7. **Drive-by "improvements" to adjacent code** — every changed line should trace directly to the request. If you notice unrelated dead code or style drift, mention it in the session summary; don't fix it. Clean up only the orphans your own changes created (unused imports/variables your edits left behind).
 
 ## Source of truth in this portfolio
 

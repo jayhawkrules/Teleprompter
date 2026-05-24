@@ -46,6 +46,81 @@ function readJsonSafe(file) {
   }
 }
 
+/**
+ * Derive a stable content hash from the canonical identity fields of a
+ * listing. Two records with the same show title + applyUrl are assumed to
+ * be the same casting call even if they came from different sources.
+ * Stored as `contentHash` on the Firestore doc and compared on each run
+ * to skip unchanged records — prevents the scout from re-flooding the
+ * moderation queue with listings that haven't changed since the last run.
+ *
+ * Hash is SHA-256 hex of a canonical string. Field order is fixed so the
+ * hash is stable across runs even if the source object has different key
+ * order. Whitespace-normalised + lowercased so minor formatting diffs in
+ * the source don't bust the cache.
+ *
+ * PR F9 — content-hash dedup.
+ */
+function contentHash(record) {
+  const canonical = [
+    (record.showTitle || '').trim().toLowerCase(),
+    (record.applyUrl  || '').trim().toLowerCase(),
+    (record.network   || '').trim().toLowerCase(),
+  ].join('|');
+  return crypto.createHash('sha256').update(canonical).digest('hex').slice(0, 16);
+}
+
+/**
+ * PR /99it Phase C3 — CD trust bump.
+ *
+ * If the listing's record.sourceHandle (set by the scraper when a
+ * listing was discovered from a known IG/TikTok handle) matches an
+ * approved or auto_approved casting director in castingDirectors/,
+ * bump record.trustScore by that CD's trustBoostPoints (default 10).
+ *
+ * Slug match is via the same slugifyHandle pattern as
+ * castingDirectorsRoutes.js. Cheap Firestore single-doc read per
+ * listing; failure is fail-open (no bump rather than no upsert).
+ */
+async function applyCdTrustBump(db, record) {
+  const handle = record.sourceHandle;
+  if (!handle) return record;
+  const slug = String(handle)
+    .trim()
+    .toLowerCase()
+    .replace(/^@/, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
+  if (!slug) return record;
+
+  try {
+    const cdSnap = await db.collection('castingDirectors').doc(slug).get();
+    if (!cdSnap.exists) return record;
+    const cd = cdSnap.data();
+    if (cd?.status !== 'approved' && cd?.status !== 'auto_approved') return record;
+
+    const bumpPoints = typeof cd.trustBoostPoints === 'number' ? cd.trustBoostPoints : 10;
+    const originalScore = record.trustScore ?? 0;
+    const bumpedScore = Math.min(100, originalScore + bumpPoints);
+
+    return {
+      ...record,
+      trustScore: bumpedScore,
+      trustReasons: [
+        ...(record.trustReasons || []),
+        `+${bumpPoints} from approved CD @${cd.handle} (${cd.platform})`,
+      ],
+      cdTrustBumpApplied: true,
+      cdTrustBumpSlug: slug,
+      cdTrustBumpPoints: bumpPoints,
+    };
+  } catch (e) {
+    console.warn(`[scout] CD trust-bump lookup failed for ${slug}:`, e?.message);
+    return record;
+  }
+}
+
 async function upsertCasting(db, record, runId) {
   const slug = record.slug;
   if (!slug) {
@@ -53,13 +128,56 @@ async function upsertCasting(db, record, runId) {
     return { skipped: true };
   }
 
+  // PR /99it Phase C3 — CD trust bump runs BEFORE the state-preservation
+  // guard so the refreshed trustScore lands on admin-mutated rows too
+  // (admins want updated scores even when status is locked).
+  record = await applyCdTrustBump(db, record);
+
   const ref = db.collection('castingCalls').doc(slug);
   const snap = await ref.get();
   const isNew = !snap.exists;
   const now = admin.firestore.FieldValue.serverTimestamp();
 
-  const payload = {
+  // PR F9: content-hash dedup — skip the upsert if the listing hasn't
+  // changed since the last run. A listing is "unchanged" when:
+  //   1. The doc already exists (isNew === false)
+  //   2. The stored contentHash matches the current record's hash
+  //   3. The doc was written less than 7 days ago
+  // This prevents the same pending-review listing from re-appearing in
+  // the moderation queue on every scout run until an admin resolves it.
+  const currentHash = contentHash(record);
+  if (!isNew) {
+    const existing = snap.data();
+    const ageMs = existing?.updatedAt?.toMillis
+      ? Date.now() - existing.updatedAt.toMillis()
+      : Infinity;
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    if (existing?.contentHash === currentHash && ageMs < sevenDaysMs) {
+      console.log(`[scout] dedup skip: ${slug} (hash=${currentHash.slice(0,8)}, age=${Math.round(ageMs/3600000)}h)`);
+      return { slug, isNew: false, decision: record.decision, deduped: true };
+    }
+  }
+
+  // PR B — state-preservation guard. Without this, an admin who has
+  // already approved a listing (status:'approved' + publicVisible:true)
+  // would see those fields silently flipped back to the scout-computed
+  // values (publicVisible:false for pending listings) on the next cron
+  // run. Admin intent must beat scraper output once a human has touched
+  // the row.
+  //
+  // Sentinel set: any row whose status was set by an admin (approved,
+  // rejected, or dismissed) keeps its admin-set status + publicVisible
+  // forever. Refresh only the metadata that's safe to update: trust
+  // score (it can improve as more sources corroborate), lastSeenAt
+  // (proves the listing is still live in source), description (admins
+  // sometimes want the latest copy), and the rolling sourcesSeen union.
+  const ADMIN_TERMINAL_STATUSES = new Set(['approved', 'rejected', 'dismissed']);
+  const existingData = isNew ? null : snap.data();
+  const isAdminMutated = !!existingData && ADMIN_TERMINAL_STATUSES.has(existingData.status);
+
+  const fullPayload = {
     slug,
+    contentHash: currentHash,
     showTitle: record.showTitle,
     network: record.network || '',
     castingCompany: record.castingCompany || '',
@@ -86,10 +204,42 @@ async function upsertCasting(db, record, runId) {
     lastRunId: runId,
   };
 
+  // For admin-mutated rows, build a narrower payload that does NOT
+  // include status/publicVisible/decision/adminApprovalRequired/moderatedAt.
+  // Those four are the admin's prerogative. We still update trustScore,
+  // tags, sourcesSeen, description, deadline, pay, lastRunId, updatedAt,
+  // and contentHash so the row stays current as the source evolves.
+  const adminSafePayload = isAdminMutated ? {
+    slug,
+    contentHash: currentHash,
+    description: record.description || existingData.description || '',
+    deadline: record.deadline || existingData.deadline || '',
+    pay: record.pay || existingData.pay || '',
+    tags: record.tags || existingData.tags || [],
+    trustScore: record.trustScore ?? existingData.trustScore ?? 0,
+    trustTier: record.trustTier || existingData.trustTier || 'low',
+    trustReasons: record.trustReasons || [],
+    sourcesSeen: record.sourcesSeen || [],
+    updatedAt: now,
+    lastRunId: runId,
+    lastSeenInScrape: now,
+  } : null;
+
+  const payload = adminSafePayload || fullPayload;
   if (isNew) payload.createdAt = now;
 
   await ref.set(payload, { merge: true });
-  return { slug, isNew, decision: record.decision };
+
+  if (isAdminMutated) {
+    console.log(`[scout] state-preserved: ${slug} kept admin status=${existingData.status} (refreshed trust + lastSeen only)`);
+  }
+
+  return {
+    slug,
+    isNew,
+    decision: record.decision,
+    statePreserved: isAdminMutated,
+  };
 }
 
 async function logModeration(db, record, isNew, runId) {
@@ -133,8 +283,11 @@ async function uploadAll() {
 
   for (const record of all) {
     try {
-      const { isNew, decision, skipped } = await upsertCasting(db, record, runId);
+      const { isNew, decision, skipped, deduped } = await upsertCasting(db, record, runId);
       if (skipped) continue;
+      // PR F9: skip moderation log for deduped unchanged records — prevents
+      // the same pending listing from re-queueing on every run.
+      if (deduped) continue;
       await logModeration(db, record, isNew, runId);
       if (isNew) newCount++; else updatedCount++;
       if (decision === 'quarantined') quarantinedCount++;
@@ -165,12 +318,60 @@ async function uploadAll() {
 
   appendRunLog(summary);
   console.log('[scout] run summary:', JSON.stringify(summary.counts));
+
+  // PR A3 — durable observability. Persist every run's summary to
+  // Firestore so /admin/scout-health (next phase) can graph success
+  // rate without depending on GitHub artifact retention (30d). Best
+  // effort — failure here must not break the run, but is logged so
+  // the operator sees the gap.
+  try {
+    await db.collection('scoutRunLog').doc(runId).set({
+      ...summary,
+      startedAt: admin.firestore.Timestamp.fromDate(new Date(summary.startedAt)),
+      finishedAt: admin.firestore.Timestamp.fromDate(new Date(summary.finishedAt)),
+    });
+  } catch (e) {
+    console.error('[scout] scoutRunLog write failed:', e.message);
+  }
+
+  // PR A3 — 0-listings alert. Four consecutive cron runs (2026-05-13/16/18/21)
+  // produced 0 listings without anyone noticing because the workflow
+  // exited 0. Loudest possible alert with no new infra: exit non-zero
+  // so the workflow turns red. Andrew already gets GH Actions failure
+  // emails; that's the alerting path until the full errorEscalations
+  // wiring lands in Phase F (auto-heal).
+  //
+  // Also write a one-doc breadcrumb to appHealth so the AdminSettingsHub
+  // health card can surface the zero-yield run without trawling logs.
+  if (summary.counts.total === 0) {
+    try {
+      await db.collection('appHealth').doc(`scout-zero-yield-${runId}`).set({
+        service: 'reality-casting-scout',
+        severity: 'high',
+        runId,
+        message: 'Scout produced 0 listings — selectors may have drifted or all sources blocked/dead.',
+        observedAt: admin.firestore.FieldValue.serverTimestamp(),
+        runArtifact: `https://github.com/jayhawkrules/CastHub1/actions`,
+      });
+    } catch (e) {
+      console.error('[scout] appHealth write failed:', e.message);
+    }
+    console.error('[scout] FAIL: 0 listings produced this run — failing the job so the workflow surfaces red.');
+    return { ...summary, zeroYield: true };
+  }
+
   return summary;
 }
 
 if (require.main === module) {
   uploadAll()
-    .then(() => process.exit(0))
+    .then((result) => {
+      // PR A3: exit non-zero when summary.zeroYield is true so GH
+      // Actions paints the workflow red. Sentinel field added in
+      // uploadAll() above.
+      if (result?.zeroYield) process.exit(2);
+      process.exit(0);
+    })
     .catch((err) => {
       console.error('[scout] fatal:', err);
       process.exit(1);

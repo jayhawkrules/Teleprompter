@@ -12,6 +12,40 @@ allowed-tools: [Read, Write, Bash, WebFetch]
 trigger_cadence: every 3 days (cron 0 8 */3 * *)
 ---
 
+## v2.3 (2026-05-17) — trusted-apply-URL boost (PR BM)
+
+> **Andrew's directive 2026-05-17:** *Social media search for casting calls is likely to be the main way producers find legitimate calls in 2026 — but the legitimacy floor on a posting is the apply form, not the platform it was discovered on.*
+
+`TRUSTED_APPLY_DOMAINS` lists casting-industry intake forms that vouch for a listing's legitimacy regardless of the discovery surface. A Tier 4 (social) listing whose `applyUrl` lands on one of these gets `+30` (`WEIGHTS['trusted_apply_domain']`) and lifts the social-only score cap from `40` to `SOCIAL_ONLY_TRUSTED_APPLY_CAP = 75`.
+
+Domains as of v2.3:
+
+- `castitreach.com` — Magical Elves / Truly Original intake
+- `castingcrane.com` — 2025+ specialist platform
+- `castingnetworks.com` — industry standard talent + jobs
+- `projectcasting.com` — reality-TV-focused aggregator
+- `backstage.com` — large general aggregator
+- `castingfrontier.com` — cross-platform with castingnetworks
+- `stage32.com` — indie / unscripted
+- `mandy.com` — UK-leaning
+- `auditionsfree.com`, `lacasting.com` — Tier 2 overlap
+
+**Explicitly excluded** (hub redirects, not forms — `AGGREGATOR_HUB_DOMAINS`): `linktr.ee`, `linkin.bio`, `beacons.ai`, `bio.link`, `lnk.bio`, `carrd.co`, `msha.ke`. A social post whose `applyUrl` is `linktr.ee/foo` isn't applying TO linktr.ee — it's redirecting somewhere; the trust signal must land on the actual form.
+
+**Whitelist seed for admin UI** (`castingTrustedSourcesRoutes` accepts this shape):
+
+```json
+[
+  { "type": "whitelist", "identifierKind": "domain", "identifier": "castitreach.com" },
+  { "type": "whitelist", "identifierKind": "domain", "identifier": "castingcrane.com" },
+  { "type": "whitelist", "identifierKind": "domain", "identifier": "castingfrontier.com" },
+  { "type": "whitelist", "identifierKind": "domain", "identifier": "stage32.com" },
+  { "type": "whitelist", "identifierKind": "domain", "identifier": "mandy.com" }
+]
+```
+
+Tier 3 of `TRUSTED_DOMAINS` also gained the same four (`castingcrane`, `castingfrontier`, `mandy`, `stage32`) — v2 changelog promised them, never shipped, finally landed.
+
 ## v2 (2026-05-13) — what changed and why
 
 The first production run on 2026-05-13 returned **0 raw listings** across every Tier-1 network: ABC / Netflix / CBS / NBC returned 200 but parsed empty (listings are client-rendered SPAs the plain `requests` scraper can't see); Bravo / MTV returned 404 (URLs retired); Discovery returned 403 (bot-blocked). v2 rebuilds the source side around that reality.

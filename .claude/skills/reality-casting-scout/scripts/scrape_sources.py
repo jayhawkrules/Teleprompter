@@ -108,8 +108,16 @@ SOURCES = [
 
     # Tier 3 — specialist platforms
     (3, "castlyst",            "https://castlyst.com/casting-calls",       "parse_generic_aggregator", "requests", "verify"),
-    (3, "castitreach",         "https://castitreach.com/casting-calls",    "parse_generic_aggregator", "requests", "verify"),
-    (3, "realitytalentsearch", "https://realitytalentsearch.com/calls",    "parse_generic_aggregator", "requests", "verify"),
+    # castitreach.com/casting-calls → 404 since at least 2026-05-13. The
+    # `castitreach.com` domain is alive but the casting-calls listing path
+    # was retired. Andrew's 2026-05-17 directive still treats *applyUrl*s
+    # on castitreach.com as high-trust legitimacy signals for listings
+    # discovered elsewhere — see TRUSTED_APPLY_DOMAINS in score_trust.py.
+    # Re-add this row only after a fresh URL is confirmed.
+    (3, "castitreach",         "https://castitreach.com/casting-calls",    "parse_generic_aggregator", "requests", "dead"),
+    # realitytalentsearch.com → DNS-dead since 2026-05-21 (NXDOMAIN).
+    # Domain appears to have lapsed. Re-add only after a fresh URL.
+    (3, "realitytalentsearch", "https://realitytalentsearch.com/calls",    "parse_generic_aggregator", "requests", "dead"),
 
     # RSS / Atom feeds — cheapest + most stable engine. Always prefer
     # the feed when a source publishes one. The parse_rss_generic
@@ -287,64 +295,135 @@ def _href_or_default(el, default: str) -> str:
     return el.get("href", default) if el and el.has_attr("href") else default
 
 
-def parse_generic_network(html: str, source_url: str, tier: int) -> Iterable[RawListing]:
+# Resilient selector families — tried in order, first one to yield ≥2 cards wins.
+# The order matters: most-specific first so that a real `.casting-call` listing
+# beats a generic `<article>` page wrapper. A 2-card minimum is the floor that
+# distinguishes "found a list of listings" from "matched the page's hero block".
+#
+# Why this is structured as a fall-through ladder rather than per-source CSS:
+# the previous design hard-coded one selector per source (`.casting-call,
+# article.casting, .show-card`). Every Tier-2 source returned 200 OK with that
+# selector matching zero elements because real aggregator markup uses class
+# names like `.job-listing`, `.posting-row`, `.casting-card`, `[data-testid]`,
+# etc. — none of which were in the hardcoded list. The 2026-05-13 → 2026-05-21
+# production runs all yielded 0 listings as a direct consequence.
+SELECTOR_LADDER = [
+    # Vendor-named cards — the obvious-but-rare match
+    "article.casting-listing, article.casting-call, article.job-listing, article.posting",
+    "div.casting-call, div.casting-card, div.casting-listing, div.job-listing, div.audition-listing",
+    "li.casting-call, li.casting-card, li.job-card, li.audition",
+    # Class-pattern matches — catches `*-listing`, `*-casting`, `*-job` variants
+    "article[class*='listing'], article[class*='casting'], article[class*='job']",
+    "div[class*='casting-call'], div[class*='casting-listing'], div[class*='casting-card']",
+    "div[class*='job-listing'], div[class*='posting'], div[class*='audition']",
+    "li[class*='casting'], li[class*='listing'], li[class*='job']",
+    # Testid / data-attribute fallbacks (modern React apps)
+    "[data-testid*='casting'], [data-testid*='job-listing'], [data-testid*='listing-card']",
+    "[data-cy*='casting'], [data-cy*='listing']",
+    # Last resort — any heading + anchor pair under a section/main that looks like a list
+    "section li:has(h2), section li:has(h3), main li:has(h2), main li:has(h3)",
+    "section article:has(h2 a), section article:has(h3 a), main article:has(h2 a), main article:has(h3 a)",
+]
+MIN_CARDS_PER_SELECTOR = 2  # below this, treat as a page header / hero match — keep walking the ladder
+
+
+def _extract_card(card, source_url: str, tier: int, network_hint: str = "") -> RawListing | None:
+    """Pull a RawListing out of one DOM card using the broadest reasonable
+    field selectors. Returns None if no title could be extracted — that
+    means this candidate isn't actually a listing card.
+    """
+    title_el = card.select_one(
+        "h2 a, h3 a, h4 a, h2, h3, h4, .title, .listing-title, "
+        ".job-title, .casting-title, [class*='title']"
+    )
+    if not title_el or not title_el.get_text(strip=True):
+        return None
+    title = title_el.get_text(strip=True)
+
+    # apply URL: prefer the title's anchor; fall back to first anchor in the card
+    anchor = title_el if (title_el.name == "a" and title_el.has_attr("href")) else card.select_one("a[href]")
+    apply_url = _href_or_default(anchor, source_url)
+    # Normalise relative URLs against the source domain
+    if apply_url and apply_url.startswith("/"):
+        from urllib.parse import urljoin
+        apply_url = urljoin(source_url, apply_url)
+
+    return RawListing(
+        showTitle=title,
+        network=network_hint or _domain(source_url).split(".")[0].upper(),
+        castingCompany=_text_or_empty(card.select_one(
+            ".casting-director, .casting-company, .producer, .company, [class*='director'], [class*='company']"
+        )),
+        description=_text_or_empty(card.select_one(
+            ".excerpt, .description, .summary, [class*='excerpt'], [class*='description'], p"
+        )),
+        applyUrl=apply_url,
+        deadline=_text_or_empty(card.select_one(
+            ".deadline, time, [class*='deadline'], [class*='due-date']"
+        )),
+        location=_text_or_empty(card.select_one(
+            ".location, .city, [class*='location'], [class*='city']"
+        )),
+        pay=_text_or_empty(card.select_one(
+            ".pay, .compensation, [class*='pay'], [class*='compensation'], [class*='rate']"
+        )),
+        sourceUrl=source_url,
+        sourceTier=tier,
+    )
+
+
+def _parse_with_ladder(html: str, source_url: str, tier: int, network_hint: str = "") -> Iterable[RawListing]:
+    """Walk the SELECTOR_LADDER and yield from the first selector family
+    that matches at least MIN_CARDS_PER_SELECTOR cards. Logs which rung
+    of the ladder matched so the operator can see whether the resilient
+    fallback is doing the work (signal that the source's vendor-specific
+    selectors should be added at the top of the ladder for clarity)."""
     soup = BeautifulSoup(html, "html.parser")
-    for card in soup.select(".casting-call, article.casting, .show-card, [data-testid*='casting']"):
-        title = card.select_one("h2, h3, .title")
-        if not title:
+    matched_rung = None
+    for rung_index, selector in enumerate(SELECTOR_LADDER):
+        try:
+            cards = soup.select(selector)
+        except Exception:  # noqa: BLE001 — some CSS-4 selectors (:has) require BS4 4.12+
             continue
-        yield RawListing(
-            showTitle=title.get_text(strip=True),
-            network=_domain(source_url).split(".")[0].upper(),
-            castingCompany=_text_or_empty(card.select_one(".casting-company")),
-            description=_text_or_empty(card.select_one(".description, p")),
-            applyUrl=_href_or_default(card.select_one("a[href]"), source_url),
-            deadline=_text_or_empty(card.select_one(".deadline, time")),
-            location=_text_or_empty(card.select_one(".location")),
-            pay=_text_or_empty(card.select_one(".pay, .compensation")),
-            sourceUrl=source_url,
-            sourceTier=tier,
-        )
+        if len(cards) >= MIN_CARDS_PER_SELECTOR:
+            matched_rung = rung_index
+            for card in cards:
+                listing = _extract_card(card, source_url, tier, network_hint)
+                if listing is not None:
+                    yield listing
+            break
+    if matched_rung is None:
+        log.info("parser: no selector rung matched for %s (HTML may be JS-rendered or unrecognized structure)", source_url)
+    else:
+        log.debug("parser: matched ladder rung %d for %s", matched_rung, source_url)
+
+
+def parse_generic_network(html: str, source_url: str, tier: int) -> Iterable[RawListing]:
+    yield from _parse_with_ladder(html, source_url, tier)
 
 
 def parse_generic_aggregator(html: str, source_url: str, tier: int) -> Iterable[RawListing]:
-    yield from parse_generic_network(html, source_url, tier)
+    yield from _parse_with_ladder(html, source_url, tier)
 
 
 def parse_projectcasting(html: str, source_url: str, tier: int) -> Iterable[RawListing]:
-    soup = BeautifulSoup(html, "html.parser")
-    for card in soup.select("article.casting-listing, .casting-call-card, .listing-card"):
-        title_el = card.select_one("h2 a, h3 a, .listing-title")
-        if not title_el:
-            continue
-        yield RawListing(
-            showTitle=title_el.get_text(strip=True),
-            network="",
-            castingCompany=_text_or_empty(card.select_one(".casting-director, .producer")),
-            description=_text_or_empty(card.select_one(".excerpt, p")),
-            applyUrl=_href_or_default(title_el, source_url),
-            deadline=_text_or_empty(card.select_one(".deadline")),
-            location=_text_or_empty(card.select_one(".location, .city")),
-            pay=_text_or_empty(card.select_one(".compensation, .pay")),
-            sourceUrl=source_url,
-            sourceTier=tier,
-        )
+    yield from _parse_with_ladder(html, source_url, tier)
 
 
 def parse_backstage(html: str, source_url: str, tier: int) -> Iterable[RawListing]:
-    yield from parse_projectcasting(html, source_url, tier)
+    yield from _parse_with_ladder(html, source_url, tier)
 
 
 def parse_castingnetworks(html: str, source_url: str, tier: int) -> Iterable[RawListing]:
-    yield from parse_projectcasting(html, source_url, tier)
+    yield from _parse_with_ladder(html, source_url, tier)
 
 
 def parse_auditionsfree(html: str, source_url: str, tier: int) -> Iterable[RawListing]:
-    yield from parse_projectcasting(html, source_url, tier)
+    yield from _parse_with_ladder(html, source_url, tier)
 
 
 def parse_lacasting(html: str, source_url: str, tier: int) -> Iterable[RawListing]:
-    yield from parse_projectcasting(html, source_url, tier)
+    yield from _parse_with_ladder(html, source_url, tier)
 
 
 PARSERS = {name: fn for name, fn in globals().items() if name.startswith("parse_")}
@@ -388,8 +467,16 @@ def scrape(tier_filter: int | None = None, max_per_source: int | None = None, wi
             if max_per_source and count >= max_per_source:
                 break
         log.info("%s: %d listings (tier %d, engine=%s, status=%s)", name, count, tier, engine, status)
-        if count == 0 and status != "verify":
-            decaying_sources.append(f"{name} (returned 0)")
+        # PR A3 — inverted-polarity fix. Original code skipped the decay
+        # warning for status=="verify" sources, but every source's status
+        # is "verify", so the warning never fired. The whole purpose of
+        # this list is to surface "this run returned 0", regardless of
+        # whether the source was previously known-healthy ("working"),
+        # known-flaky ("verify"), or actively probing ("js-required").
+        # "dead" sources are filtered earlier in the loop and never reach
+        # this branch.
+        if count == 0:
+            decaying_sources.append(f"{name} (returned 0, status={status})")
 
     if decaying_sources:
         log.warning("Decaying or zero-yield sources this run: %s", ", ".join(decaying_sources))

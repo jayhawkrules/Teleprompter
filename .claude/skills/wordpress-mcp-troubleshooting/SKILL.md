@@ -1,7 +1,7 @@
 ---
 name: wordpress-mcp-troubleshooting
 description: Use whenever the WordPress.com MCP is in play on any portfolio site (realitytelevisionawards.com, toronadoentertainment.com, or any future WP site) and a content operation fails, behaves unexpectedly, or a manual paste from wp-admin appears to save but doesn't persist. Captures the documented Claude-MCP-client edit-scope limitation, the Classic-Editor-mangles-pasted-HTML trap, the wrong-page-paste foot-gun (verify post ID in URL), the anti-bot fetch issue, three recovery paths when pages.update fails, and the verify-via-MCP-after-wp-admin protocol so nothing ships into the wrong page silently. Battle-tested 2026-05-28 on the ARTAS Privacy Policy / Terms of Service edits. Keywords - WordPress, WordPress.com, Jetpack, MCP, pages.update, pages.create, permission denied, "not allowed to edit this post", Classic Editor, TinyMCE, Gutenberg, Code editor, Visual tab, Text tab, slug swap, manual paste, anti-bot 403, 406, activity log, claude-mcp-editor.
-version: 1.0.0
+version: 1.1.0
 author: Andrew Ward (jayhawkrules)
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob]
 ---
@@ -27,38 +27,76 @@ Always load `safe-edit-policy` first.
 - The edit is a brand-new page (no existing-page edit-scope issue applies)
 - The MCP is working fine and the user just wants help with content — that's `voice-locker-per-app` or copywriting work
 
-## The core finding: Claude MCP edit-scope is client-identity-bound
+## The core finding: WordPress Privacy Policy page has special capability protection
 
-WordPress.com's MCP authorization tracks two distinct Claude clients, with different default scopes:
+**The single most common "permission denied" failure on a WordPress.com MCP edit is trying to update the page designated as the site's Privacy Policy in Settings → Privacy.** WordPress core protects that specific page with the `manage_privacy_options` meta-cap, which is checked at REST API write time and is separate from normal page-edit capabilities. The MCP user (even with Administrator role on the local site) cannot satisfy this check, so the update fails with `"Sorry, you are not allowed to edit this post."`.
 
-| MCP client name (in activity log) | Version | pages.create | pages.update on MCP-created | pages.update on wp-admin-created |
-|---|---|---|---|---|
-| `Anthropic/ClaudeAI` | `1.0.0` (older) | ✓ works | ✓ works | ✓ works |
-| `Claude` (current) | (no version) | ✓ works | ✓ works | ✗ **"not allowed to edit this post"** |
+The MCP CAN otherwise edit pre-existing pages just fine. This was confirmed 2026-05-28 by successfully updating the Home page (post ID 7, pre-existing since 2022) while the same operation on post ID 3 (the designated Privacy Policy page) failed.
 
-**This is a server-side WordPress.com scope on the MCP client name, not a local WP user role.** Promoting users in wp-admin → Users → All Users does NOT fix it. The role promotion is captured in the activity log and irrelevant to MCP authorization.
+**The fix is a 60-second wp-admin loop:**
 
-To check which client your session is using, do an MCP write and then query `wpcom-mcp-site activity.get` — the `actor.mcp_client_name` field on the resulting `post__updated` or `post__published` entry will tell you.
+1. **wp-admin → Settings → Privacy** (`<site>/wp-admin/options-privacy.php`)
+2. **Change Your Privacy Policy Page** dropdown: change from "Privacy Policy" to **— Select —** (none); click Use This Page / Save
+3. Now the MCP can `pages.update` that page normally
+4. After the update lands, go back to Settings → Privacy and re-set the dropdown to Privacy Policy → Save
 
-## Diagnosing the edit-scope wall in one minute
+The same pattern applies to the **Page for Posts** and **Front Page** in Settings → Reading if they trigger similar protection (less common but worth checking if those pages also fail).
+
+### What this is NOT
+
+Earlier hypotheses that turned out to be wrong (kept here so future sessions don't re-investigate):
+
+- ❌ "Claude MCP can't edit pre-existing pages" — false; it can. Tested by successfully updating Home page (ID 7).
+- ❌ "Claude MCP has narrower scope than older Anthropic/ClaudeAI MCP" — false; the activity-log `mcp_client_name` difference is real but doesn't gate edit capability. Both clients can edit pages.
+- ❌ "Local WP user role needs promotion (e.g., `claude-mcp-editor` → Administrator)" — false; the MCP authenticates against a different WP user (mapped from the WP.com primary connection user, not whatever local user has a similar name). Role promotion on a side-channel user does nothing.
+
+### Other capability-protected pages worth knowing
+
+WordPress core or popular plugins designate certain pages with extra protection:
+
+| Page designation | Setting location | Capability required | Symptom |
+|---|---|---|---|
+| Privacy Policy | Settings → Privacy | `manage_privacy_options` | "Not allowed to edit this post" on MCP update |
+| Page for Posts | Settings → Reading | (none typically; usually editable) | Rare; check if PP fix pattern doesn't apply |
+| WooCommerce Shop / Cart / Checkout / My Account pages | WooCommerce → Settings → Advanced → Page Setup | varies; sometimes locked by WooCommerce's `manage_woocommerce` | Updates may silently fall back to default content |
+| Custom-post-type Privacy notice (Rank Math) | Rank Math → General → Misc | (Rank Math's own cap filter) | Possible but unverified |
+
+## Diagnosing "not allowed to edit this post" in one minute
+
+When `pages.update` fails with `"Sorry, you are not allowed to edit this post."`, the question is whether the failure is page-specific (protected by WordPress core / a plugin) or environment-wide (MCP misconfigured).
 
 ```
 1. mcp__claude_ai_WordPress_com__wpcom-mcp-content-authoring  pages.update
-   id: <a page you just created via MCP this session>
-   meta: { "_test_marker": "scope-test" }
+   id: <failing page id, e.g. Privacy Policy = 3>
+   meta: { "_diag_test": "page-specific-or-env" }
    user_confirmed: true
+   → expected: fails with "not allowed"
 
 2. mcp__claude_ai_WordPress_com__wpcom-mcp-content-authoring  pages.update
-   id: <a page that was on the site before this session, e.g. Privacy Policy, About>
-   meta: { "_test_marker": "scope-test" }
+   id: <a different unrelated existing page, e.g. About or Home>
+   meta: { "_diag_test": "page-specific-or-env" }
    user_confirmed: true
+   → if SUCCEEDS: failure is page-specific (privacy-policy designation, WooCommerce page, plugin lock)
+   → if ALSO FAILS: environment-wide (MCP token problem, capability gap, plugin intercepting all REST writes)
 ```
 
-If step 1 succeeds and step 2 fails with "not allowed", you have the documented Claude-MCP edit-scope limitation. Do not retry on different users / role bumps — go to one of the three workaround paths below.
+If step 2 succeeds (the common case), check whether the failing page is designated in **Settings → Privacy** or **Settings → Reading**. If yes, apply the 60-second un-designate → MCP-update → re-designate loop documented above.
 
-## Three recovery paths
+If step 2 also fails: tell the user to reconnect the WordPress.com MCP from claude.ai → Settings → Connectors. Per Andrew's operational reference, session expiry can present as "tool not found" or as widespread permission errors. Reconnecting refreshes the OAuth handshake.
 
-### Path A — Wp-admin manual paste (most common; correct procedure)
+## Recovery paths
+
+### Path 0 — Un-designate the protected page (use this FIRST for Privacy Policy failures)
+
+If `pages.update` failed because the page is the designated Privacy Policy (or similar protected page), the fastest fix is 60 seconds in wp-admin:
+
+1. wp-admin → Settings → Privacy → Change page assignment to **— Select —** → Save
+2. MCP `pages.update` on that page → now works
+3. wp-admin → Settings → Privacy → re-assign back → Save
+
+This preserves the page ID, slug, URL, revisions, and all metadata. Use Paths A–C below only if the page is NOT a designated WordPress-protected page.
+
+### Path A — Wp-admin manual paste (when MCP is genuinely blocked)
 
 Two foot-guns kill this path on the first attempt:
 
@@ -155,18 +193,25 @@ Inactive but available: Elementor, MailMunch, OptinMonster, Akismet, Mailchimp.
 
 Context: needed to update Privacy Policy with SMS Program Data section for TCR campaign registration.
 
-What happened:
-1. Created new Terms of Service page via MCP → succeeded
-2. `pages.update` on existing Privacy Policy → failed "not allowed to edit this post"
-3. Promoted local user `claude-mcp-editor` from Editor → Administrator → no effect
-4. Andrew manual-paste attempt in wp-admin → silently pasted into the WRONG page (Terms, post 9114, not PP, post 3); content was further mangled by Classic Editor's Visual tab
-5. MCP re-fetch revealed both pages in bad state — PP still old, Terms now holding PP text
-6. Restored Terms via MCP (works because MCP created it)
-7. Captured findings in this skill
+What happened (and what we initially got wrong):
+1. Created new Terms of Service page (ID 9114) via MCP → succeeded
+2. `pages.update` on existing Privacy Policy (ID 3) → failed `"Sorry, you are not allowed to edit this post."`
+3. **Initial wrong diagnosis:** assumed the Claude MCP client had narrower scope than the older Anthropic/ClaudeAI client and couldn't edit pre-existing pages
+4. Promoted local user `claude-mcp-editor` from Editor → Administrator → no effect (wasn't the issue)
+5. Andrew tried a manual wp-admin paste → pasted into the WRONG page (Terms, ID 9114, not PP, ID 3) AND Classic Editor's Visual tab further mangled the HTML into `<p class="p1">`/`<span class="s1">` soup
+6. Restored Terms via MCP `pages.update` → worked (already MCP-edited, so no protection issue)
+7. **Diagnostic test that revealed the truth:** `pages.update` on Home page (ID 7, pre-existing wp-admin page from 2022) → **succeeded**. This invalidated the "MCP can't edit pre-existing pages" hypothesis.
+8. **Real cause:** PP (ID 3) is the page designated in Settings → Privacy, which triggers WordPress core's `manage_privacy_options` capability check — separate from normal page-edit caps and not satisfied by the MCP user.
 
-What we learned: Claude MCP can create + edit-its-own-creates, cannot edit pre-existing. Classic Editor is the active editor. Wrong-page paste is a real foot-gun. Always verify with MCP after wp-admin writes.
+What we learned:
+- **Always run the page-specific vs environment-wide diagnostic** before assuming a global MCP issue. One extra `pages.update` on an unrelated page saves an hour of misdiagnosis.
+- WordPress core protects designated Privacy Policy pages specifically. Check Settings → Privacy before blaming the MCP.
+- Classic Editor's Visual tab is a real HTML-mangler. Always Text tab for raw HTML pastes.
+- Wrong-page paste is a real foot-gun. Verify `?post=<id>` in the wp-admin URL before pasting.
 
-Resolution: Path A (corrected wp-admin paste with Text tab) for the urgent PP fix; Path C (re-grant scope at WP.com) as the long-term fix.
+Resolution: 60-second un-designate → MCP update → re-designate loop. PP shipped with SMS Program Data section, TCR registration unblocked.
+
+Skill v1.0 (the version committed before this diagnostic) had the wrong root-cause analysis. v1.1 (this version) reflects the corrected understanding.
 
 ## Related skills
 

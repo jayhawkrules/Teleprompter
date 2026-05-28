@@ -96,18 +96,40 @@ SOURCES = [
     (1, "paramountplus",    "https://www.paramountplus.com/casting/",        "parse_generic_network",   "playwright", "verify"),
 
     # Tier 2 — aggregators (purpose-built to be machine-readable)
-    (2, "projectcasting",   "https://www.projectcasting.com/casting-calls/reality-tv", "parse_projectcasting",  "requests",   "verify"),
-    (2, "backstage",        "https://www.backstage.com/casting/reality-tv/",          "parse_backstage",       "requests",   "verify"),
-    (2, "auditionsfree",    "https://www.auditionsfree.com/category/reality-tv/",     "parse_auditionsfree",   "requests",   "verify"),
+    # 2026-05-25 — scout-zero-listings round-2 selector tuning:
+    #   - DROP backstage.com entirely. Listings are login-walled; even
+    #     with browser headers + Playwright the public path returns 0
+    #     (Andrew's directive, after 9 PRs of trying).
+    #   - parse_projectcasting (HTML) removed: 0 h2/h3/h4 in static HTML —
+    #     projectcasting.com renders listings client-side. RSS path below
+    #     replaces it.
+    (2, "auditionsfree",    "https://www.auditionsfree.com/category/reality-tv/",     "parse_auditionsfree",   "requests",   "working"),
     (2, "castingnetworks",  "https://www.castingnetworks.com/talent/jobs?type=reality","parse_castingnetworks", "playwright", "js-required"),
     (2, "lacasting",        "https://www.lacasting.com/jobs?type=reality",            "parse_lacasting",       "playwright", "js-required"),
     (2, "stage32",          "https://www.stage32.com/jobs?searchQuery=reality",       "parse_generic_aggregator", "playwright", "verify"),
-    (2, "castingcrane",     "https://castingcrane.com/casting-calls",                 "parse_generic_aggregator", "playwright", "verify"),
-    (2, "castingfrontier",  "https://www.castingfrontier.com/jobs?type=reality",      "parse_generic_aggregator", "playwright", "verify"),
+    # castingcrane.com apex → 403 bot-blocked as of 2026-05-25. Trust signal
+    # on applyUrls to castingcrane subdomains still applies (see
+    # TRUSTED_APPLY_DOMAINS in score_trust.py); we just can't scrape the
+    # apex hub directly. Most castingcrane content surfaces via castlyst.com
+    # apply links anyway — see Tier 3 row below.
+    (2, "castingcrane",     "https://castingcrane.com/casting-calls",                 "parse_generic_aggregator", "playwright", "dead"),
+    # castingfrontier.com apex is marketing copy; their real jobs board is
+    # behind login. Confirmed 2026-05-25 — apex returns only 3 .post-casting
+    # cards, all "Join Casting Frontier!" promo blocks.
+    (2, "castingfrontier",  "https://www.castingfrontier.com/jobs?type=reality",      "parse_generic_aggregator", "playwright", "dead"),
     (2, "mandy",            "https://www.mandy.com/uk/casting-calls?category=reality","parse_generic_aggregator", "requests",   "verify"),
+    # mysticartpictures.com/now-casting/ → 404; /mystic/nowcasting.php apex
+    # returns 200 but the listings are rendered client-side (only 1 h2 +
+    # 2 h3 of static markup, all auth/cookie UI). Re-add when stable URL.
+    (2, "mysticart",        "https://www.mysticartpictures.com/mystic/nowcasting.php","parse_generic_aggregator", "playwright", "dead"),
 
     # Tier 3 — specialist platforms
-    (3, "castlyst",            "https://castlyst.com/casting-calls",       "parse_generic_aggregator", "requests", "verify"),
+    # castlyst.com is a Wix-hosted site whose listings render server-side
+    # under `.wixui-repeater__item`. Plain-HTTP fetch returns 31 listings
+    # per page; many applyUrls land on castingcrane.com subdomains
+    # (eg. `mafscasting.castingcrane.com`) so the trust score lifts
+    # automatically via TRUSTED_APPLY_DOMAINS. Confirmed 2026-05-25.
+    (3, "castlyst",            "https://castlyst.com/casting-calls",       "parse_castlyst",           "requests", "working"),
     # castitreach.com/casting-calls → 404 since at least 2026-05-13. The
     # `castitreach.com` domain is alive but the casting-calls listing path
     # was retired. Andrew's 2026-05-17 directive still treats *applyUrl*s
@@ -120,17 +142,19 @@ SOURCES = [
     (3, "realitytalentsearch", "https://realitytalentsearch.com/calls",    "parse_generic_aggregator", "requests", "dead"),
 
     # RSS / Atom feeds — cheapest + most stable engine. Always prefer
-    # the feed when a source publishes one. The parse_rss_generic
-    # parser maps feedparser entries to RawListing fields with a
-    # sensible default mapping; per-source parsers can override.
+    # the feed when a source publishes one. parse_projectcasting_rss
+    # filters /feed/ entries to casting-call URLs only — the firehose
+    # mixes casting calls with celebrity news, but everything under
+    # `/blog/casting-calls-acting-auditions/` is a real call.
     #
-    # Project Casting historically exposed an RSS feed at ?rss=1 on
-    # the listings page; we re-add it here so the run-without-Playwright
-    # path still gets something even if the HTML scrape is rate-limited.
-    # Validate via `python -c "import feedparser; print(feedparser.parse('https://www.projectcasting.com/casting-calls/reality-tv?rss=1').entries[:1])"`.
-    (2, "projectcasting_rss",  "https://www.projectcasting.com/casting-calls/reality-tv?rss=1",  "parse_rss_generic", "rss", "verify"),
-    (2, "backstage_rss",       "https://www.backstage.com/casting/reality-tv/feed/",             "parse_rss_generic", "rss", "verify"),
-    (2, "auditionsfree_rss",   "https://www.auditionsfree.com/category/reality-tv/feed/",        "parse_rss_generic", "rss", "verify"),
+    # 2026-05-25 verification:
+    #   - `?rss=1` on the category page → returns HTML (not RSS — the param
+    #     is silently ignored). Fixed v3 → use `/feed/` instead.
+    #   - `/casting-calls/reality-tv/feed/` → 410 Gone (category feed dead)
+    #   - `/feed/` → 200, 20 RSS items (mix; URL prefix filter required)
+    # backstage_rss + auditionsfree_rss removed: backstage dropped entirely;
+    # auditionsfree_rss URL returned the HTML category page anyway.
+    (2, "projectcasting_rss",  "https://www.projectcasting.com/feed/",     "parse_projectcasting_rss", "rss", "working"),
 ]
 
 
@@ -139,12 +163,25 @@ def _polite_sleep() -> None:
 
 
 def _browser_headers() -> dict:
-    """Return a fresh, browser-like header set for each request."""
+    """Return a fresh, browser-like header set for each request.
+
+    Note on Accept-Encoding (2026-05-25 fix): we deliberately omit `br`
+    (brotli) and accept only `gzip, deflate`. Python's `requests`
+    library cannot decode brotli responses without an extra package
+    (`brotli` / `urllib3[brotli]`); if we advertise br, sites like
+    auditionsfree.com return brotli-encoded bodies that look like
+    binary garbage to BeautifulSoup, the selectors match nothing, and
+    the parser silently returns 0 listings. This was a contributor to
+    the chronic rawCount=0 problem alongside the over-generic
+    selectors. Dropping `br` is the cheaper fix than adding a runtime
+    dep; the bandwidth difference is negligible at the scout's
+    every-3-days cadence.
+    """
     return {
         "User-Agent":      random.choice(USER_AGENTS),
         "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
+        "Accept-Encoding": "gzip, deflate",
         "Cache-Control":   "no-cache",
         "Pragma":          "no-cache",
     }
@@ -177,13 +214,23 @@ def fetch_requests(url: str) -> str | None:
 
 
 def fetch_rss(url: str) -> list | None:
-    """Read an RSS/Atom feed via feedparser. Returns a list of feed
-    entries (dict-like) so the rss parser can map fields verbatim,
-    or None on permanent failure.
+    """Read an RSS/Atom feed. Returns a list of feed entries (dict-like)
+    so the rss parser can map fields verbatim, or None on permanent
+    failure.
 
     Imported lazily so the requests-only path doesn't require the
-    feedparser package. Add `feedparser>=6.0` to requirements when the
-    scout is wired into a CI image that doesn't already have it.
+    feedparser package.
+
+    2026-05-25 fix: we now fetch the body via `requests` and pass the
+    bytes to `feedparser.parse()` instead of letting feedparser fetch
+    directly. Direct feedparser fetches were silently failing because:
+      1. feedparser's built-in HTTP client uses urllib's default SSL
+         context, which can't always find the system cert bundle on
+         macOS Python builds (urlopen error CERTIFICATE_VERIFY_FAILED).
+      2. Even with a browser UA, sites behind Cloudflare may serve
+         feedparser differently than requests.
+    Routing through requests gives us the same SSL handling as our
+    other engines + uses the same browser-like header set.
 
     Note: feedparser is patient about malformed feeds and will return
     even when the response is HTML rather than a real feed. We guard
@@ -199,13 +246,17 @@ def fetch_rss(url: str) -> list | None:
 
     try:
         log.info("GET %s (rss)", url)
-        parsed = feedparser.parse(url, agent=random.choice(USER_AGENTS))
+        resp = requests.get(url, headers=_browser_headers(), timeout=TIMEOUT_SECONDS)
+        if resp.status_code != 200:
+            log.warning("rss fetch non-200 (%s) for %s", resp.status_code, url)
+            return None
+        parsed = feedparser.parse(resp.content)
         entries = list(getattr(parsed, "entries", []) or [])
         if not entries or not any(e.get("link") for e in entries):
             log.warning("rss feed returned no parseable entries: %s", url)
             return None
         return entries
-    except Exception as e:  # noqa: BLE001 — feedparser surfaces many error shapes
+    except Exception as e:  # noqa: BLE001 — feedparser/requests surfaces many error shapes
         log.warning("rss fetch failed %s — %s", url, e)
         return None
     finally:
@@ -406,24 +457,139 @@ def parse_generic_aggregator(html: str, source_url: str, tier: int) -> Iterable[
     yield from _parse_with_ladder(html, source_url, tier)
 
 
-def parse_projectcasting(html: str, source_url: str, tier: int) -> Iterable[RawListing]:
-    yield from _parse_with_ladder(html, source_url, tier)
-
-
-def parse_backstage(html: str, source_url: str, tier: int) -> Iterable[RawListing]:
-    yield from _parse_with_ladder(html, source_url, tier)
-
-
 def parse_castingnetworks(html: str, source_url: str, tier: int) -> Iterable[RawListing]:
-    yield from _parse_with_ladder(html, source_url, tier)
-
-
-def parse_auditionsfree(html: str, source_url: str, tier: int) -> Iterable[RawListing]:
     yield from _parse_with_ladder(html, source_url, tier)
 
 
 def parse_lacasting(html: str, source_url: str, tier: int) -> Iterable[RawListing]:
     yield from _parse_with_ladder(html, source_url, tier)
+
+
+# Per-source parsers — tuned 2026-05-25 against real HTML fixtures in
+# scripts/fixtures/. The ladder still exists as a fallback for sources
+# we haven't profiled yet, but for these 3 sources the dedicated
+# parser is strictly better: the ladder was matching menu items
+# instead of listings and the generic _extract_card was pulling
+# navigation chrome instead of show titles.
+
+def parse_auditionsfree(html: str, source_url: str, tier: int) -> Iterable[RawListing]:
+    """auditionsfree.com category page — WordPress with `article.post.hentry`.
+    Per fixture, ~15 listings per page. The .entry-title and .entry-summary
+    selectors lift cleanly; the apply link is the post permalink.
+
+    Tier mapping note: source is Tier 2 (aggregator); listings on
+    auditionsfree carry a mix of reality TV, scripted, and commercial
+    casting. The /reality-tv/ category URL pre-filters most of that.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    posts = soup.select("article.post.hentry, article.post.type-post")
+    for post in posts:
+        title_el = post.select_one(".entry-title a, .entry-title, h1 a, h2 a, h3 a")
+        if not title_el:
+            continue
+        title = title_el.get_text(strip=True)
+        if not title:
+            continue
+        anchor = title_el if (title_el.name == "a" and title_el.has_attr("href")) else post.select_one("a[href]")
+        apply_url = _href_or_default(anchor, source_url)
+        summary = _text_or_empty(post.select_one(".entry-summary, .entry-content p, p"))
+        yield RawListing(
+            showTitle=title,
+            network="auditionsfree",
+            castingCompany="",
+            description=summary[:800],
+            applyUrl=apply_url,
+            deadline="",
+            location="",
+            pay="",
+            sourceUrl=source_url,
+            sourceTier=tier,
+        )
+
+
+def parse_castlyst(html: str, source_url: str, tier: int) -> Iterable[RawListing]:
+    """castlyst.com — Wix-hosted Mythie-competitor scraper site. Listings
+    live under `.wixui-repeater__item` with structure:
+      [genre badge] [h2 show title] [Apply button → castlyst landing OR direct]
+      [description text]
+    Per fixture, ~31 listings per page. Apply URLs frequently land on
+    castingcrane.com subdomains — the TRUSTED_APPLY_DOMAINS bonus in
+    score_trust.py picks those up automatically (+30 trust).
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    items = soup.select(".wixui-repeater__item")
+    for item in items:
+        heading = item.find(["h1", "h2", "h3", "h4"])
+        if not heading:
+            continue
+        title = heading.get_text(strip=True)
+        if not title:
+            continue
+        # Castlyst lists 2 anchors per item: the castlyst detail page first,
+        # then the actual external apply link (castingcrane / pietown / etc.).
+        # Prefer the EXTERNAL apply link — it carries the trust signal and
+        # is what the producer actually wants to share.
+        anchors = item.find_all("a", href=True)
+        external = next(
+            (a for a in anchors if a.get("href", "").startswith("http")
+             and "castlyst.com" not in a.get("href", "")),
+            None,
+        )
+        apply_url = external.get("href") if external else (
+            anchors[0].get("href") if anchors else source_url
+        )
+        # Description: full item text minus the heading + "Apply" button label.
+        full_text = item.get_text(" ", strip=True)
+        description = full_text.replace(title, "", 1).replace("Apply", "", 1).strip()
+        yield RawListing(
+            showTitle=title,
+            network="castlyst",
+            castingCompany="",
+            description=description[:800],
+            applyUrl=apply_url,
+            deadline="",
+            location="",
+            pay="",
+            sourceUrl=source_url,
+            sourceTier=tier,
+        )
+
+
+# URL-prefix filter for projectcasting.com /feed/ — the firehose mixes
+# blog news ("Anne Hathaway Addresses Facelift Rumors") with real casting
+# calls. Everything under /blog/casting-calls-acting-auditions/ is a real
+# call. Verified 2026-05-25 by inspecting /feed/ entries.
+PROJECTCASTING_CALL_URL_FRAGMENT = "/blog/casting-calls-acting-auditions/"
+
+
+def parse_projectcasting_rss(feed_entries, source_url: str, tier: int) -> Iterable[RawListing]:
+    """projectcasting.com /feed/ — filtered RSS. Only emits entries whose
+    link contains PROJECTCASTING_CALL_URL_FRAGMENT, which is how PC
+    namespaces their actual casting-call posts vs news + interviews."""
+    for entry in feed_entries or []:
+        link = (entry.get("link") or "").strip()
+        if not link or PROJECTCASTING_CALL_URL_FRAGMENT not in link:
+            continue
+        title = (entry.get("title") or "").strip()
+        if not title:
+            continue
+        summary_html = entry.get("summary") or entry.get("description") or ""
+        try:
+            summary_text = BeautifulSoup(summary_html, "html.parser").get_text(" ", strip=True)
+        except Exception:  # noqa: BLE001
+            summary_text = summary_html
+        yield RawListing(
+            showTitle=title,
+            network="projectcasting",
+            castingCompany="",
+            description=summary_text[:2000],
+            applyUrl=link,
+            deadline=str(entry.get("published") or ""),
+            location="",
+            pay="",
+            sourceUrl=source_url,
+            sourceTier=tier,
+        )
 
 
 PARSERS = {name: fn for name, fn in globals().items() if name.startswith("parse_")}

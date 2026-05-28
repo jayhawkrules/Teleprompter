@@ -12,6 +12,38 @@ allowed-tools: [Read, Write, Bash, WebFetch]
 trigger_cadence: every 3 days (cron 0 8 */3 * *)
 ---
 
+## v2.4 (2026-05-25) — Top-50 trusted-domain expansion
+
+Curated source list of the top 50 trusted reality-casting domains (Andrew, 2026-05-25 — see `reference_top_50_casting_sources_2026_05_25` memory) revealed 25+ legitimate domains absent from `TRUSTED_DOMAINS` and `TRUSTED_APPLY_DOMAINS`. This release closes those gaps so a listing on `cbssurvivorcasting.com` or `netflixreality.com` doesn't get scored as a random URL.
+
+**Tier 1 (network/streamer) additions — official show-specific portals:**
+- `cbssurvivorcasting.com`, `bigbrothercasting.tv`, `theamazingracecasting.com` — CBS reality trifecta
+- `netflixreality.com` — covers Love Is Blind, The Circle, Ultimatum, Perfect Match
+- `bachelornation.com` — Bachelor / Bachelorette / Golden franchise
+- `truecasting.com` — investigative/true-story unscripted
+
+**Tier 2 (industry platforms) additions:**
+- `starnow.com` — UK/US/AU
+- `worldwide-casting.com` — free-to-apply, remote auditions
+- `actorsaccess.com` + `breakdownexpress.com` — Breakdown Services talent + CD sides
+- `spotlight.com` — #1 UK platform (~99% of UK TV casts via Spotlight)
+- `allcasting.com` — active since ~2005, ~1,200 Trustpilot reviews
+- `staffmeup.com` — production-credit verification
+- `mysticartpictures.com`, `kmosscasting.com` — direct casting-company portals
+
+**Tier 3 (discovery / verification signals):**
+- `realityblurred.com`, `deadline.com`, `variety.com`, `thewrap.com`, `realscreen.com` — trade pubs (greenlight → casting in 30-90 days, breaking casting announcements)
+- `castingreality.net` — curated directory of official show portals
+- `castingsociety.com` — CSA member directory (verification signal)
+- `etribez.com`, `talentsystems.com` — backend that powers ~300 show subdomains (Casting Crane parent)
+
+**TRUSTED_APPLY_DOMAINS** gained the official network portals + all professional intake platforms (NOT the trade publications — they break news but don't host forms). This means a TikTok casting post whose applyUrl is `cbssurvivorcasting.com` now lifts past the 40 social-only cap to 75.
+
+**Explicitly NOT added (and why):**
+- `realitytalent.net` — $397 bi-monthly coaching service, not a sourcing pipeline (distinct from `realitytalentsearch.com` which IS legit)
+- `consumer.ftc.gov` — verification source for scam patterns, but doesn't host casting calls; better fit for `RED_FLAG_PATTERNS` regex (deferred)
+- `reddit.com` / `facebook.com` — too broad at top-level domain; specific subreddits like `r/castingcalls` need separate handling
+
 ## v2.3 (2026-05-17) — trusted-apply-URL boost (PR BM)
 
 > **Andrew's directive 2026-05-17:** *Social media search for casting calls is likely to be the main way producers find legitimate calls in 2026 — but the legitimacy floor on a posting is the apply form, not the platform it was discovered on.*

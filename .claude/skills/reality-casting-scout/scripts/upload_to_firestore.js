@@ -121,6 +121,26 @@ async function applyCdTrustBump(db, record) {
   }
 }
 
+// Translate the Python scout's decision/status vocabulary into the
+// canonical castingCalls.status values the rest of the backend reads.
+// Pre-fix (2026-05-25 regression) the upload script wrote the raw
+// Python values straight through, so 65 docs ingested today landed
+// with statuses (pending_admin_review, auto_approve, quarantined) that
+// no other reader queries for, stranding them in Firestore. The
+// Railway-side scout (backend/realityCastingScoutJob.js) uses
+// pending_review/published/quarantine — same shape as the moderation
+// panel + publicCastingCallRoutes filters.
+const STATUS_NORMALIZE = {
+  pending_admin_review: 'pending_review',
+  auto_approve:         'published',
+  quarantined:          'quarantine',
+};
+
+function normalizeStatus(record) {
+  const raw = record.status || record.decision || '';
+  return STATUS_NORMALIZE[raw] || raw;
+}
+
 async function upsertCasting(db, record, runId) {
   const slug = record.slug;
   if (!slug) {
@@ -190,8 +210,14 @@ async function upsertCasting(db, record, runId) {
     sourceTier: record.sourceTier || 0,
     sourcesSeen: record.sourcesSeen || [],
     tags: record.tags || [],
-    status: record.status || record.decision,
+    status: normalizeStatus(record),
     decision: record.decision,
+    // scrapedAt / scrapedAtIso are required by the moderation panel's
+    // onSnapshot orderBy('scrapedAt','desc') — without them the docs
+    // are silently excluded from the panel even when status is right.
+    scrapedAt:    now,
+    scrapedAtIso: new Date().toISOString(),
+    scrapedFrom:  record.scrapedFrom || record.sourceLabel || 'github-actions-scout',
     publicVisible: !!record.publicVisible,
     adminApprovalRequired: !!record.adminApprovalRequired,
     trustScore: record.trustScore ?? 0,
@@ -356,7 +382,7 @@ async function uploadAll() {
     } catch (e) {
       console.error('[scout] appHealth write failed:', e.message);
     }
-    console.error('[scout] FAIL: 0 listings produced this run — failing the job so the workflow surfaces red.');
+    console.warn('[scout] WARNING: 0 listings produced this run. appHealth row written; scout-health admin panel will surface persistent zeros.');
     return { ...summary, zeroYield: true };
   }
 
@@ -366,10 +392,17 @@ async function uploadAll() {
 if (require.main === module) {
   uploadAll()
     .then((result) => {
-      // PR A3: exit non-zero when summary.zeroYield is true so GH
-      // Actions paints the workflow red. Sentinel field added in
-      // uploadAll() above.
-      if (result?.zeroYield) process.exit(2);
+      // 2026-05-25 (Andrew): zero-yield was making EVERY manual run go
+      // red even when 0 listings was legitimate (e.g. Playwright off,
+      // sources between drops, weekend lull). The appHealth row +
+      // scout-health admin panel are the right surfaces for "sources
+      // are stuck" detection — they distinguish a one-off zero from
+      // N-consecutive-zero. Exit 0 here keeps the workflow's overall
+      // status green when the underlying scrape pipeline completed
+      // cleanly even if it found nothing.
+      //
+      // FATAL errors still exit 1 below. Zero-yield is now a warning,
+      // not a failure.
       process.exit(0);
     })
     .catch((err) => {

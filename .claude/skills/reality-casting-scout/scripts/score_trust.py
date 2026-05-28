@@ -51,13 +51,28 @@ WEIGHTS = {
 
 TRUSTED_DOMAINS = {
     1: {
+        # Network / streamer top-level domains.
         "abc.com", "bravotv.com", "netflix.com", "cbs.com", "nbc.com",
         "mtv.com", "discovery.com", "tlc.com", "hbo.com", "hulu.com",
         "fox.com", "peacocktv.com", "paramountplus.com",
+        # v2.4 (2026-05-25) — official show-specific casting portals.
+        # These are zero-middleman portals owned by the networks /
+        # production companies. A listing here = legitimate by default.
+        "cbssurvivorcasting.com", "bigbrothercasting.tv",
+        "theamazingracecasting.com", "netflixreality.com",
+        "bachelornation.com", "truecasting.com",
     },
     2: {
+        # Industry-vetted casting platforms.
         "projectcasting.com", "backstage.com", "castingnetworks.com",
         "auditionsfree.com", "lacasting.com",
+        # v2.4 (2026-05-25) — verified professional platforms with
+        # active reality-TV sections + curated casting-director gates.
+        "starnow.com", "worldwide-casting.com", "actorsaccess.com",
+        "breakdownexpress.com", "spotlight.com", "allcasting.com",
+        "staffmeup.com",
+        # Direct casting-company portals (large unscripted shops).
+        "mysticartpictures.com", "kmosscasting.com",
     },
     3: {
         # PR /99it Phase C3 — v2 changelog promised these four;
@@ -65,6 +80,17 @@ TRUSTED_DOMAINS = {
         "castlyst.com", "castitreach.com", "realitytalentsearch.com",
         "castingcrane.com", "castingfrontier.com",
         "mandy.com", "stage32.com",
+        # v2.4 (2026-05-25) — trade publications + discovery signals.
+        # These don't host application forms but break casting news
+        # (greenlight → casting in 30-90 days) and curate verified
+        # show-portal directories.
+        "realityblurred.com", "deadline.com", "variety.com",
+        "thewrap.com", "realscreen.com",
+        # Verification + directory sources.
+        "castingreality.net",     # directory of official show portals
+        "castingsociety.com",     # CSA member directory (verification)
+        # Backend casting platform (subdomains carry the actual forms).
+        "etribez.com", "talentsystems.com",
     },
 }
 
@@ -91,6 +117,20 @@ TRUSTED_APPLY_DOMAINS = {
     "castitreach.com", "castingcrane.com", "castingnetworks.com",
     "projectcasting.com", "backstage.com", "castingfrontier.com",
     "stage32.com", "mandy.com", "auditionsfree.com", "lacasting.com",
+    # v2.4 (2026-05-25) — official show-specific portals. A social-
+    # discovered listing whose applyUrl lands here is applying to the
+    # network directly; legitimacy floor is met.
+    "cbssurvivorcasting.com", "bigbrothercasting.tv",
+    "theamazingracecasting.com", "netflixreality.com",
+    "bachelornation.com", "truecasting.com",
+    # v2.4 — professional intake platforms that actually host forms
+    # (vs trade publications which don't).
+    "starnow.com", "worldwide-casting.com", "actorsaccess.com",
+    "breakdownexpress.com", "spotlight.com", "allcasting.com",
+    "mysticartpictures.com", "kmosscasting.com",
+    # Backend platform that powers ~300 show-specific subdomains —
+    # subdomains like `topchef.etribez.com` reduce to etribez.com here.
+    "etribez.com",
 }
 
 

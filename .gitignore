@@ -9,3 +9,6 @@ coverage/
 
 # Runtime user data — created by historyStore.ts on the server
 data/
+
+# Firebase CLI deploy cache
+.firebase/

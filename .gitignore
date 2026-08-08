@@ -12,3 +12,7 @@ data/
 
 # Firebase CLI deploy cache
 .firebase/
+
+# Private skills hub — never publish to this PUBLIC repo.
+# Source of truth: github.com/jayhawkrules/claude-skills (private)
+.claude/skills/

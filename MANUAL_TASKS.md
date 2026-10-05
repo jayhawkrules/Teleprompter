@@ -25,7 +25,6 @@ Per inspection 2026-05-10, this repo does NOT have:
 - ❌ An `/admin` routes surface
 - ❌ Any existing `BugReport` component
 - ❌ Firebase / Firestore (uses session-based storage; the reference impl writes to a `clientErrors` Firestore collection)
-- ❌ Anthropic API key in `.env.example` (uses Gemini only)
 - ❌ `GITHUB_PAT` in env
 
 ### What this means for adoption
@@ -49,7 +48,7 @@ Three options, in order of effort:
 - Add Firestore + admin auth pattern + admin route guards
 - Add `/admin/errors` dashboard
 - Add `BugReportModal` smart-context capture (TikTok session state + script content)
-- Add `POST /api/admin/suggest-error-fix` (Anthropic) — would require adding Anthropic alongside Gemini
+- Add `POST /api/admin/suggest-error-fix` (Anthropic) — the Anthropic SDK is already a dependency (`claudeAI.ts`)
 - Add `POST /api/admin/promote-error-to-github` if `GITHUB_PAT` is added
 - Add Firestore rules (show diff, don't overwrite)
 

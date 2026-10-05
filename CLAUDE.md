@@ -9,7 +9,7 @@ A standalone teleprompter app — originally bootstrapped from Google AI Studio 
 
 ## Stack
 
-Vite + React + TypeScript + Tailwind + Radix (`components.json`). Express dev server in `server.ts`. Uses Google Gemini API for AI features (`GEMINI_API_KEY` in `.env.local`). Local script history via `historyStore.ts`.
+Vite + React + TypeScript + Tailwind + Radix (`components.json`). Express dev server in `server.ts`. Uses the Anthropic Claude API for AI features, server-side only (`claudeAI.ts`, `ANTHROPIC_API_KEY` in `.env.local`). Local script history via `historyStore.ts`.
 
 ## Key files
 
@@ -19,12 +19,13 @@ Vite + React + TypeScript + Tailwind + Radix (`components.json`). Express dev se
 | `components/` | Radix-based UI components |
 | `historyStore.ts` | Local script history |
 | `server.ts` | Local dev Express |
+| `claudeAI.ts` | Server-side Anthropic calls (script generation, topic similarity) |
 | `lib/` | Utilities |
 
 ## Locked decisions (do not change without conversation)
 
 - **Standalone app, scope-limited** — don't merge with CueHound. Different product, different audience. Mythie consumes the deployed URL via `?script=` deep-link only; no code merger.
-- **Gemini API for AI** — not Anthropic (kept lightweight; if Anthropic is needed, run the integration through a metered proxy)
+- **Anthropic Claude API for AI** — moved off Google Gemini 2026-10-05 (Andrew: "nothing left on Gemini"). Key stays server-side; never `VITE_`-prefixed.
 - **Repo is PUBLIC as of 2026-05-14** — source visible. LICENSE is proprietary all-rights-reserved. No copyleft / open-source obligations.
 - **Product name is "Teleprompter"** (renamed from TeleVibe 2026-05-14). One-time localStorage migration in `src/hooks/useAI.ts` preserves user history across the rename.
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { generateIndustryScript, type GeneratedContent } from '../services/geminiService';
+import { generateIndustryScript, type GeneratedContent } from '../services/aiService';
 
 export interface HistoryItem extends GeneratedContent {
   id:        string;
@@ -70,14 +70,14 @@ async function serverDelete(id: string): Promise<HistoryItem[] | null> {
   } catch { return null; }
 }
 
-// ── Topic similarity check via Gemini ─────────────────────────────────────────
+// ── Topic similarity check via server AI ──────────────────────────────────────
 async function checkTopicSimilarity(
   newTopic: string,
   history: HistoryItem[],
 ): Promise<{ similar: boolean; matchedTopic?: string }> {
   if (history.length === 0) return { similar: false };
 
-  // Build a compact list of past topics/scripts to send to Gemini
+  // Build a compact list of past topics/scripts to send to the server AI check
   const pastTopics = history
     .slice(0, 20)
     .map(h => h.topic || h.script.slice(0, 80))

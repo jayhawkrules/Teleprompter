@@ -8,7 +8,7 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
-import { GoogleGenAI, Type } from '@google/genai';
+import { createAIClient, buildScriptRequest, buildSimilarityRequest, runJSON } from './claudeAI';
 import { createServer as createViteServer } from 'vite';
 import cookieParser from 'cookie-parser';
 import { getHistory, addHistoryItem, deleteHistoryItem } from './historyStore';
@@ -34,7 +34,7 @@ const upload = multer({
 const TIKTOK_REDIRECT_URI  = process.env.TIKTOK_REDIRECT_URI || 'https://teleprompter.producinghollywood.com/auth/tiktok/callback';
 const TIKTOK_CLIENT_KEY    = process.env.TIKTOK_CLIENT_KEY;
 const TIKTOK_CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET;
-const GEMINI_API_KEY       = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+const ANTHROPIC_API_KEY    = process.env.ANTHROPIC_API_KEY;
 
 const SESSION_SECRET = process.env.SESSION_SECRET;
 if (!SESSION_SECRET) {
@@ -50,7 +50,7 @@ const AES_KEY = crypto.createHash('sha256').update(EFFECTIVE_SECRET).digest();
 const AES_ALG = 'aes-256-gcm' as const;
 
 // ─── Singleton AI client — created once at startup, not per request ──────────
-const ai = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
+const ai = createAIClient(ANTHROPIC_API_KEY);
 
 app.set('trust proxy', 1);
 
@@ -235,7 +235,7 @@ app.get('/api/health', (_req, res) => {
 // ─── AI Script Generation ─────────────────────────────────────────────────────
 app.post('/api/generate-script', scriptRateLimit, async (req, res) => {
   if (!ai) {
-    console.error('[Gemini] No API key found.');
+    console.error('[AI] ANTHROPIC_API_KEY is not set.');
     return res.status(500).json({ error: 'AI service not configured.' });
   }
 
@@ -319,28 +319,14 @@ CAPTION:
 Return ONLY valid JSON: { "script": "...", "caption": "..." }`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: { script: { type: Type.STRING }, caption: { type: Type.STRING } },
-          required: ['script', 'caption'],
-        },
-      },
-    });
-
-    const rawText = typeof response.text === 'function' ? response.text() : response.text;
-    const result  = JSON.parse(rawText || '{}');
-    console.log('[Gemini] Script generated successfully');
+    const result = await runJSON<{ script?: string; caption?: string }>(ai, buildScriptRequest(prompt));
+    console.log('[AI] Script generated successfully');
     res.json({
       script:  result.script  || 'Failed to generate script.',
       caption: result.caption || 'Failed to generate caption.',
     });
   } catch (error: any) {
-    console.error('[Gemini] Error:', error?.message ?? String(error));
+    console.error('[AI] Error:', error?.message ?? String(error));
     res.status(500).json({ error: 'Failed to generate script: ' + (error.message || String(error)) });
   }
 });
@@ -363,27 +349,11 @@ Answer with JSON only: { "similar": true/false, "matchedTopic": "the closest pas
 Be strict — only flag as similar if the core subject is genuinely the same. Different angles on the same broad subject count as similar.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model:    'gemini-2.0-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            similar:      { type: Type.BOOLEAN },
-            matchedTopic: { type: Type.STRING },
-          },
-          required: ['similar'],
-        },
-      },
-    });
-    const rawText = typeof response.text === 'function' ? response.text() : response.text;
-    const result  = JSON.parse(rawText || '{}');
-    console.log('[Gemini] Topic similarity check:', result);
+    const result = await runJSON<{ similar?: boolean; matchedTopic?: string | null }>(ai, buildSimilarityRequest(prompt));
+    console.log('[AI] Topic similarity check:', result);
     res.json({ similar: result.similar || false, matchedTopic: result.matchedTopic || null });
   } catch (err: any) {
-    console.error('[Gemini] Similarity check error:', err.message);
+    console.error('[AI] Similarity check error:', err.message);
     res.json({ similar: false });
   }
 });

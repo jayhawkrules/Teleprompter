@@ -4,7 +4,7 @@ export interface GeneratedContent {
 }
 
 // AI generation is handled server-side via /api/generate-script
-// This keeps the Gemini API key secure (server env var only)
+// This keeps the Anthropic API key secure (server env var only)
 // and avoids VITE_ prefix env var issues in the browser build.
 export async function generateIndustryScript(customTopic?: string): Promise<GeneratedContent> {
   const res = await fetch('/api/generate-script', {

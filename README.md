@@ -9,7 +9,7 @@ Part of the [Toronado Entertainment, LLC](https://mythie.app) app portfolio. Bui
 - **Vertical teleprompter** — adjustable speed, font size, opacity. Voice-activated mode pauses scrolling when you stop speaking; auto-scroll otherwise.
 - **Camera recording** — captures your read directly in the browser. Save the video locally or share it out.
 - **Direct TikTok posting** — OAuth-connect a TikTok account and post the recorded video without leaving the app.
-- **AI script assist** — connect a [Google Gemini](https://ai.google.dev) API key in `.env.local` to generate scripts from a topic prompt.
+- **AI script assist** — set an [Anthropic](https://console.anthropic.com) API key (`ANTHROPIC_API_KEY`) in `.env.local` to generate scripts from a topic prompt.
 - **Local history** — every generated/edited script is saved to browser localStorage. Optional server-backed history when signed in.
 
 ## Deep-link integration mode
@@ -45,7 +45,7 @@ The Mythie Social Amplification Coach (spec: [`docs/strategy/social-amplificatio
 ```bash
 npm install
 cp .env.example .env.local       # only needed for AI + TikTok features
-# Edit .env.local: set GEMINI_API_KEY, TIKTOK_CLIENT_KEY, etc. (see .env.example)
+# Edit .env.local: set ANTHROPIC_API_KEY, TIKTOK_CLIENT_KEY, etc. (see .env.example)
 npm run dev
 ```
 
@@ -56,7 +56,7 @@ The app starts at `http://localhost:5173` (or whatever port Vite picks). The Exp
 - Vite + React 19 + TypeScript
 - Tailwind v4 + Radix UI (`components.json` Shadcn-style components)
 - Express dev server (`server.ts`) for TikTok OAuth callback + server-backed history
-- Google Gemini API (`@google/genai`) for AI script generation
+- Anthropic Claude API (`@anthropic-ai/sdk`, server-side in `claudeAI.ts`) for AI script generation
 - TikTok For Developers OAuth + Content Posting API
 
 ## Deploy to Firebase Hosting
